@@ -350,6 +350,47 @@ def build_wake_execution_handler(start_task, execution_resolver):
     return handle
 
 
+TASK_ENGINE_MODULE = (
+    BASE / "bin" / "anu-task-engine-v0.5.3.py"
+)
+
+
+def _load_task_engine():
+    """Load the frozen V0.5.3 Task Engine without executing a task."""
+    spec = importlib.util.spec_from_file_location(
+        "anu_task_engine_v0_5_3_scheduler",
+        TASK_ENGINE_MODULE,
+    )
+
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Unable to load Task Engine module: {TASK_ENGINE_MODULE}"
+        )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def build_production_wake_execution_handler(db):
+    """Bind the frozen V0.5.3 start_task API to the DB-backed WAKE handler."""
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    engine = _load_task_engine()
+
+    start_task = getattr(engine, "start_task", None)
+    if not callable(start_task):
+        raise RuntimeError(
+            "Task Engine must provide callable start_task"
+        )
+
+    return build_db_bound_wake_execution_handler(
+        db,
+        start_task,
+    )
+
+
 def build_db_bound_wake_execution_handler(db, start_task):
     """Bind a database-backed execution descriptor resolver to WAKE."""
     if db is None or not hasattr(db, "execute"):

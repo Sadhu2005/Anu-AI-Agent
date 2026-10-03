@@ -189,6 +189,47 @@ def list_dependencies(db, task_id):
     return [dict(row) for row in rows]
 
 
+def list_dependents(db, prerequisite_task_id):
+    rows = db.execute("""
+        SELECT
+            td.task_id,
+            t.status AS dependent_status,
+            t.attempts AS dependent_attempts,
+            td.created_at
+        FROM task_dependencies td
+        JOIN tasks t
+          ON t.id = td.task_id
+        WHERE td.depends_on_task_id = ?
+        ORDER BY td.task_id
+    """, (prerequisite_task_id,)).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def evaluate_dependents(db, prerequisite_task_id):
+    evaluations = []
+
+    for dependent in list_dependents(
+        db,
+        prerequisite_task_id,
+    ):
+        state = dependency_readiness(
+            db,
+            dependent["task_id"],
+        )
+
+        evaluations.append({
+            "task_id": dependent["task_id"],
+            "current_status": dependent["dependent_status"],
+            "current_attempts": dependent["dependent_attempts"],
+            "state": state["state"],
+            "reason": state["reason"],
+            "dependency_state": state,
+        })
+
+    return evaluations
+
+
 def dependency_readiness(db, task_id):
     if not task_exists(db, task_id):
         return {

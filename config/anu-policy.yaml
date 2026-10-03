@@ -1,0 +1,89 @@
+anu:
+  name: ANU
+  version: "0.1.0"
+  enabled: false
+
+identity:
+  linux_user: anu-agent
+  home: /srv/anu/home
+
+filesystem:
+  root: /srv/anu
+
+  writable:
+    - /srv/anu/home
+    - /srv/anu/brain
+    - /srv/anu/workspace
+    - /srv/anu/sandbox
+    - /srv/anu/browser
+    - /srv/anu/logs
+    - /srv/anu/runtime
+    - /srv/anu/secrets
+    - /srv/anu/tests
+
+  read_only:
+    - /srv/anu/config
+    - /srv/anu/src
+    - /srv/anu/bin
+
+  forbidden:
+    - /etc
+    - /boot
+    - /root
+    - /home
+    - /opt
+    - /var
+    - /usr
+    - /bin
+    - /sbin
+    - /dev
+    - /proc
+    - /sys
+
+workspace:
+  root: /srv/anu/workspace
+  projects: /srv/anu/workspace/projects
+
+git:
+  enabled: false
+
+  allowed_repository: ""
+
+  allowed_workspace:
+    - /srv/anu/workspace/projects
+
+  allow_clone: false
+  allow_branch: false
+  allow_commit: false
+  allow_push: false
+  allow_pull_request: false
+
+browser:
+  enabled: false
+  profile: /srv/anu/browser/anu-profile
+  downloads: /srv/anu/browser/anu-downloads
+
+docker:
+  enabled: false
+
+deployment:
+  enabled: false
+  production_access: false
+
+security:
+  allow_sudo: false
+  allow_docker_socket: false
+  allow_system_changes: false
+  allow_firewall_changes: false
+  allow_ssh_changes: false
+  allow_secret_access: false
+
+resources:
+  max_cpu_percent: 50
+  max_memory_mb: 3072
+  max_parallel_tasks: 1
+  temperature_limit_celsius: 70
+
+execution:
+  max_command_timeout_seconds: 1800
+  max_retries_per_task: 5

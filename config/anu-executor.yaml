@@ -1,0 +1,29 @@
+executor:
+  name: ANU Executor
+  version: "0.1.0"
+  enabled: true
+
+workspace:
+  root: /srv/anu/workspace/projects
+
+limits:
+  max_read_bytes: 262144
+  max_write_bytes: 524288
+  max_list_entries: 200
+  max_search_results: 100
+  max_search_files: 5000
+
+operations:
+  list: true
+  read: true
+  write: true
+  mkdir: true
+  delete_file: true
+  delete_empty_directory: true
+  search: true
+
+  shell: false
+  docker: false
+  git: false
+  network: false
+  deployment: false

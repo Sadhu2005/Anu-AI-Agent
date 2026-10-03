@@ -1,0 +1,7 @@
+projects: []
+
+rules:
+  require_explicit_registration: true
+  one_repository_per_project: true
+  repository_must_match_exactly: true
+  production_deployment_requires_approval: true

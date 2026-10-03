@@ -1,0 +1,22 @@
+runtime:
+
+  brain:
+    database: /srv/anu/brain/anu-brain.db
+
+  logs:
+    main: /srv/anu/logs/anu.log
+    events: /srv/anu/logs/anu-events.jsonl
+    actions: /srv/anu/logs/anu-actions.jsonl
+    tests: /srv/anu/logs/anu-tests.jsonl
+    errors: /srv/anu/logs/anu-errors.jsonl
+
+  runtime:
+    pid: /srv/anu/runtime/anu.pid
+    socket: /srv/anu/runtime/anu.sock
+    state: /srv/anu/runtime/anu-state.json
+
+  workspace:
+    root: /srv/anu/workspace/projects
+
+  sandbox:
+    root: /srv/anu/sandbox

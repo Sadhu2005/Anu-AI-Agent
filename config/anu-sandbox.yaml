@@ -1,0 +1,52 @@
+sandbox:
+  name: ANU Docker Sandbox
+  version: 0.2.0
+  enabled: true
+docker:
+  executable: /usr/bin/docker
+  image: python@sha256:bb2988715db2cf7ace7b53f38f3cffbef7c7046a656bee66245eb0ed386e2e81
+  network: none
+  privileged: false
+  read_only_rootfs: true
+  cap_drop_all: true
+  no_new_privileges: true
+  pids_limit: 128
+  cpus: 1.0
+  memory_mb: 512
+  memory_swap_mb: 512
+  tmpfs_size_mb: 128
+  workdir: /workspace
+  user: 999:984
+workspace:
+  root: /srv/anu/workspace/projects
+  mount_mode: read-only
+execution:
+  timeout_seconds: 120
+  max_output_bytes: 131072
+operations:
+  python_test:
+    description: Run Python unittest discovery in sandbox
+    image: python@sha256:bb2988715db2cf7ace7b53f38f3cffbef7c7046a656bee66245eb0ed386e2e81
+    command:
+    - python
+    - -m
+    - unittest
+    - discover
+    - -v
+    - /workspace
+  python_compile:
+    description: Compile Python source in memory without writing bytecode
+    image: python@sha256:bb2988715db2cf7ace7b53f38f3cffbef7c7046a656bee66245eb0ed386e2e81
+    command:
+    - python
+    - -c
+    - 'import pathlib; files=list(pathlib.Path(''/workspace'').rglob(''*.py'')); [compile(p.read_text(encoding=''utf-8''),
+      str(p), ''exec'') for p in files]; print(f''COMPILE_OK: {len(files)} Python
+      files'')'
+admission:
+  enabled: true
+  governor: /srv/anu/bin/anu-resource-governor.py
+  ram_mb: 512
+  storage_mb: 128
+  allow_decision: ALLOW
+  maximum_parallel_tasks: 1

@@ -1,0 +1,26 @@
+resource_policy:
+
+  cpu:
+    total_cores: 4
+    max_percent: 50
+    preferred_cores: 2
+
+  memory:
+    total_gb: 8
+    max_mb: 3072
+    emergency_free_mb: 1024
+
+  temperature:
+    warning_celsius: 65
+    pause_celsius: 70
+    resume_celsius: 60
+
+  storage:
+    minimum_free_gb: 20
+
+  production:
+    priority: highest
+
+  agent:
+    priority: low
+    max_parallel_tasks: 1

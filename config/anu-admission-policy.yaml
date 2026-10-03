@@ -1,0 +1,55 @@
+admission:
+  name: ANU Resource Admission Policy
+  version: "0.1.0"
+  enabled: true
+
+host_safety:
+  minimum_free_ram_mb: 2048
+  minimum_free_disk_gb: 50
+  warning_temperature_c: 60
+  pause_temperature_c: 65
+
+anu_budget:
+  maximum_ram_mb: 3072
+  maximum_cpu_percent: 50
+  maximum_parallel_tasks: 1
+
+storage:
+  maximum_workspace_gb: 30
+  maximum_project_gb: 15
+
+files:
+  normal_max_mb: 250
+  preflight_max_mb: 1024
+  approval_max_mb: 2048
+  absolute_max_mb: 2048
+
+models:
+  enabled: false
+  normal_max_gb: 3
+  approval_max_gb: 5
+  absolute_max_gb: 5
+
+downloads:
+  enabled: false
+  maximum_single_download_mb: 1024
+  destination: /srv/anu/browser/anu-downloads
+
+packages:
+  system_install: false
+  apt: false
+  apt_get: false
+  pip_global: false
+  npm_global: false
+
+execution:
+  heavy_workload_ram_threshold_mb: 1024
+  heavy_workload_cpu_threshold_percent: 60
+
+behavior:
+  when_low_ram: pause
+  when_low_disk: deny
+  when_hot: pause
+  when_workspace_full: deny
+  when_large_file: approval
+  when_unknown_resource: deny

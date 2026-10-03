@@ -1,0 +1,64 @@
+execution_profiles:
+  version: 0.1.0
+  enabled: true
+  default_profile: null
+  profiles:
+    inspect:
+      description: Low-cost read-only project inspection
+      ram_mb: 128
+      storage_mb: 10
+      timeout_seconds: 30
+      max_output_bytes: 65536
+      network: false
+      filesystem_mode: workspace-read
+      sandbox_required: false
+    git-read:
+      description: Read-only Git inspection
+      ram_mb: 256
+      storage_mb: 50
+      timeout_seconds: 60
+      max_output_bytes: 131072
+      network: false
+      filesystem_mode: workspace-read
+      sandbox_required: false
+    python-basic:
+      description: Small Python interpreter operations
+      ram_mb: 256
+      storage_mb: 50
+      timeout_seconds: 60
+      max_output_bytes: 65536
+      network: false
+      filesystem_mode: workspace-read
+      sandbox_required: false
+    system-info:
+      description: Basic executable version checks
+      ram_mb: 128
+      storage_mb: 10
+      timeout_seconds: 30
+      max_output_bytes: 32768
+      network: false
+      filesystem_mode: read-only
+      sandbox_required: false
+    python-sandbox:
+      description: Python execution inside Docker sandbox
+      ram_mb: 512
+      storage_mb: 128
+      timeout_seconds: 120
+      max_output_bytes: 131072
+      network: false
+      filesystem_mode: workspace-read
+      sandbox_required: true
+  command_profiles:
+    pwd: inspect
+    git_version: system-info
+    git_status: git-read
+    git_status_short: git-read
+    git_branch: git-read
+    git_branch_current: git-read
+    git_diff: git-read
+    git_diff_stat: git-read
+    python_version: system-info
+    node_version: system-info
+    npm_version: system-info
+    python_test: python-sandbox
+    python_compile: python-sandbox

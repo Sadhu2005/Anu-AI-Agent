@@ -1,0 +1,129 @@
+gateway:
+  name: ANU Command Gateway
+  version: "0.1.2"
+  enabled: true
+
+workspace:
+  root: /srv/anu/workspace/projects
+
+execution:
+  timeout_seconds: 120
+  max_output_bytes: 131072
+
+security:
+  shell: false
+  command_chaining: false
+  sudo: false
+  root_execution: false
+
+resource_control:
+  enabled: true
+
+  governor: /srv/anu/bin/anu-resource-governor.py
+
+  default_ram_mb: 128
+  default_storage_mb: 10
+
+  deny_on:
+    - DENY
+
+  pause_on:
+    - PAUSE
+
+  approval_on:
+    - APPROVAL
+
+  preflight_on:
+    - PREFLIGHT
+
+allowed_commands:
+
+  pwd:
+    executable: /usr/bin/pwd
+    argv: []
+    resources:
+      ram_mb: 50
+      storage_mb: 1
+
+  git_version:
+    executable: /usr/bin/git
+    argv:
+      - "--version"
+    resources:
+      ram_mb: 50
+      storage_mb: 1
+
+  git_status:
+    executable: /usr/bin/git
+    argv:
+      - "status"
+    resources:
+      ram_mb: 100
+      storage_mb: 1
+
+  git_status_short:
+    executable: /usr/bin/git
+    argv:
+      - "status"
+      - "--short"
+    resources:
+      ram_mb: 100
+      storage_mb: 1
+
+  git_branch:
+    executable: /usr/bin/git
+    argv:
+      - "branch"
+    resources:
+      ram_mb: 100
+      storage_mb: 1
+
+  git_branch_current:
+    executable: /usr/bin/git
+    argv:
+      - "branch"
+      - "--show-current"
+    resources:
+      ram_mb: 100
+      storage_mb: 1
+
+  git_diff:
+    executable: /usr/bin/git
+    argv:
+      - "diff"
+    resources:
+      ram_mb: 150
+      storage_mb: 5
+
+  git_diff_stat:
+    executable: /usr/bin/git
+    argv:
+      - "diff"
+      - "--stat"
+    resources:
+      ram_mb: 100
+      storage_mb: 1
+
+  python_version:
+    executable: /usr/bin/python3
+    argv:
+      - "--version"
+    resources:
+      ram_mb: 50
+      storage_mb: 1
+
+  node_version:
+    executable: /usr/bin/node
+    argv:
+      - "--version"
+    resources:
+      ram_mb: 100
+      storage_mb: 1
+
+  npm_version:
+    executable: /usr/bin/npm
+    argv:
+      - "--version"
+    resources:
+      ram_mb: 150
+      storage_mb: 1

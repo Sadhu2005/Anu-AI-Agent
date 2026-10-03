@@ -14,6 +14,7 @@ Safety model:
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import sqlite3
@@ -26,6 +27,7 @@ from pathlib import Path
 BASE = Path("/srv/anu")
 DB_FILE = BASE / "brain" / "anu-brain.db"
 SAFE_MUTATION = BASE / "bin" / "anu-safe-mutation-v0.2.py"
+TASK_GRAPH = BASE / "bin" / "anu-task-graph-v0.1.py"
 LOG_FILE = BASE / "logs" / "anu-task-engine.jsonl"
 
 TERMINAL = {"completed", "blocked"}
@@ -92,6 +94,64 @@ def event(task_id, event_type, message, metadata=None):
 
 def db_connect():
     return sqlite3.connect(DB_FILE)
+
+
+def dependency_admission(task_id):
+    """Return Task Graph admission state without mutating task attempts."""
+    if not TASK_GRAPH.is_file():
+        raise RuntimeError(f"Task Graph unavailable: {TASK_GRAPH}")
+
+    spec = importlib.util.spec_from_file_location(
+        "anu_task_graph_v0_1_runtime",
+        TASK_GRAPH,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Task Graph module could not be loaded")
+
+    graph = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(graph)
+
+    db = graph.db_connect(str(DB_FILE))
+    try:
+        return graph.dependency_readiness(db, task_id)
+    finally:
+        db.close()
+
+
+def enforce_dependency_admission(task_id):
+    """Gate execution on Task Graph readiness before attempts or mutation."""
+    admission = dependency_admission(task_id)
+    state = admission.get("state")
+
+    if state == "READY":
+        return admission
+
+    if state == "WAITING":
+        event(
+            task_id,
+            "TASK_DEPENDENCY_WAITING",
+            "task waiting for prerequisites",
+            {
+                "dependency_state": admission,
+            },
+        )
+        return admission
+
+    if state == "BLOCKED":
+        update_task(task_id, status="blocked")
+        event(
+            task_id,
+            "TASK_BLOCKED",
+            "task blocked by prerequisite dependency",
+            {
+                "dependency_state": admission,
+            },
+        )
+        return admission
+
+    raise RuntimeError(
+        f"Unknown Task Graph admission state: {state!r}"
+    )
 
 
 def fetch_task(task_id):
@@ -454,7 +514,6 @@ def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_i
     )
 
 def start_task(task_id, project, changes_file, operation):
-    run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid.uuid4().hex[:8]}"
     task = fetch_task(task_id)
 
     if not task:
@@ -465,6 +524,24 @@ def start_task(task_id, project, changes_file, operation):
             f"Task {task_id} is not startable from status={task['status']}"
         )
 
+    admission = enforce_dependency_admission(task_id)
+    if admission["state"] != "READY":
+        current = fetch_task(task_id)
+        return (
+            {
+                "ok": False,
+                "task_id": task_id,
+                "task_status": current["status"],
+                "attempt": int(task["attempts"]),
+                "retryable": task["status"] == "failed",
+                "reason": admission["reason"],
+                "dependency_state": admission,
+            },
+            2 if admission["state"] == "WAITING" else 3,
+        )
+
+    run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid.uuid4().hex[:8]}"
+    task = fetch_task(task_id)
     attempt = int(task["attempts"]) + 1
 
     if attempt > MAX_ATTEMPTS:
@@ -483,7 +560,6 @@ def start_task(task_id, project, changes_file, operation):
 
 
 def retry_task(task_id, project, changes_file, operation):
-    run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid.uuid4().hex[:8]}"
     task = fetch_task(task_id)
 
     if not task:
@@ -500,6 +576,24 @@ def retry_task(task_id, project, changes_file, operation):
         raise RuntimeError(
             f"Task {task_id} reached MAX_ATTEMPTS={MAX_ATTEMPTS}"
         )
+
+    admission = enforce_dependency_admission(task_id)
+    if admission["state"] != "READY":
+        current = fetch_task(task_id)
+        return (
+            {
+                "ok": False,
+                "task_id": task_id,
+                "task_status": current["status"],
+                "attempt": int(current["attempts"]),
+                "retryable": current["status"] == "failed",
+                "reason": admission["reason"],
+                "dependency_state": admission,
+            },
+            2 if admission["state"] == "WAITING" else 3,
+        )
+
+    run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid.uuid4().hex[:8]}"
 
     event(
         task_id,

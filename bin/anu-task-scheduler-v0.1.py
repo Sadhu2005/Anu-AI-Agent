@@ -101,6 +101,40 @@ def discover_ready_tasks(db):
     return ready
 
 
+def run_production_scheduler_cycle(db, max_tasks):
+    """Run one bounded production scheduling cycle.
+
+    Discovery remains deterministic and read-only. Only the first
+    ``max_tasks`` currently-ready candidates are revalidated and dispatched.
+    The execution side effects remain behind the existing production WAKE
+    binding and V0.5.3 Task Engine start_task boundary.
+    """
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    if isinstance(max_tasks, bool) or not isinstance(max_tasks, int):
+        raise TypeError("max_tasks must be a positive integer")
+
+    if max_tasks <= 0:
+        raise ValueError("max_tasks must be a positive integer")
+
+    candidates = discover_ready_tasks(db)
+    selected = candidates[:max_tasks]
+
+    if not selected:
+        return []
+
+    plan = build_ready_task_wake_plan(db, selected)
+    wake_handler = build_production_wake_execution_handler(db)
+
+    return consume_dependency_wake_plan(
+        plan,
+        {
+            "WAKE": wake_handler,
+        },
+    )
+
+
 def dispatch_production_ready_tasks(db):
     """Dispatch currently ready tasks through the production WAKE binding.
 

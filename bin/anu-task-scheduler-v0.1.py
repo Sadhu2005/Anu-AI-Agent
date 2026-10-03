@@ -10,6 +10,8 @@ EXECUTION_SPEC_MODULE = (
     BASE / "bin" / "anu-task-execution-spec-v0.1.py"
 )
 
+LIFECYCLE_MODULE = BASE / "bin" / "anu-scheduler-runtime-v0.1.py"
+
 
 def _load_graph():
     spec = importlib.util.spec_from_file_location(
@@ -37,6 +39,23 @@ def _load_execution_spec():
         raise RuntimeError(
             f"Unable to load execution-spec module: "
             f"{EXECUTION_SPEC_MODULE}"
+        )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_lifecycle():
+    spec = importlib.util.spec_from_file_location(
+        "anu_scheduler_runtime_v0_1_production_scheduler",
+        LIFECYCLE_MODULE,
+    )
+
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Unable to load scheduler lifecycle module: "
+            f"{LIFECYCLE_MODULE}"
         )
 
     module = importlib.util.module_from_spec(spec)
@@ -99,6 +118,26 @@ def discover_ready_tasks(db):
         })
 
     return ready
+
+
+def run_scheduler_cycle_once(
+    db_path,
+    max_tasks,
+    lock_path=None,
+):
+    """Run the production scheduler through the scheduler lifecycle boundary.
+
+    The lifecycle owns runtime locking and the SQLite connection. The
+    production scheduler remains responsible only for the scheduling cycle.
+    """
+    lifecycle = _load_lifecycle()
+
+    return lifecycle.run_scheduler_cycle_once(
+        db_path=db_path,
+        max_tasks=max_tasks,
+        cycle_fn=run_production_scheduler_cycle,
+        lock_path=lock_path,
+    )
 
 
 def run_production_scheduler_cycle(db, max_tasks):

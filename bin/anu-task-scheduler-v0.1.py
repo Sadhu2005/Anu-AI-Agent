@@ -101,6 +101,26 @@ def discover_ready_tasks(db):
     return ready
 
 
+def dispatch_production_ready_tasks(db):
+    """Dispatch currently ready tasks through the production WAKE binding.
+
+    This composes the tested scheduler discovery/plan/consumer path with the
+    V0.5.3 Task Engine start_task boundary. The caller still owns the database
+    connection; this function does not mutate scheduler state itself.
+    """
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    wake_handler = build_production_wake_execution_handler(db)
+
+    return dispatch_ready_task_wakes(
+        db,
+        {
+            "WAKE": wake_handler,
+        },
+    )
+
+
 def dispatch_ready_task_wakes(db, handlers):
     """Discover ready tasks, build a revalidated WAKE plan, and consume it.
 

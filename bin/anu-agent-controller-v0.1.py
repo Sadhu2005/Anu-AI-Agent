@@ -245,6 +245,22 @@ class AgentController:
                 reason="execution results collected",
             )
 
+            all_waiting = (
+                bool(attempt_results)
+                and all(
+                    str(result.status).strip().casefold()
+                    == "waiting"
+                    for result in attempt_results
+                )
+            )
+
+            if all_waiting:
+                self.state_machine.transition(
+                    "WAITING",
+                    reason="execution waiting on dependency",
+                )
+                return self.report()
+
             all_successful = all(
                 result.success
                 for result in attempt_results

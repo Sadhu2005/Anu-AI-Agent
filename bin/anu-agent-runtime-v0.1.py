@@ -10,6 +10,7 @@ class AgentState(str, Enum):
     PLANNING = "PLANNING"
     EXECUTING = "EXECUTING"
     OBSERVING = "OBSERVING"
+    WAITING = "WAITING"
     RETRY = "RETRY"
     COMPLETE = "COMPLETE"
     FAILED = "FAILED"
@@ -34,9 +35,11 @@ _ALLOWED_TRANSITIONS = {
     },
     AgentState.OBSERVING: {
         AgentState.COMPLETE,
+        AgentState.WAITING,
         AgentState.RETRY,
         AgentState.FAILED,
     },
+    AgentState.WAITING: set(),
     AgentState.RETRY: {
         AgentState.EXECUTING,
         AgentState.FAILED,

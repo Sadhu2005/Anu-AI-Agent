@@ -108,6 +108,22 @@ def test_successful_controller_run():
         "attempts": 1,
         "retry_count": 0,
         "plan_id": "plan-001",
+        "results": [
+            {
+                "action_id": "action-001",
+                "success": True,
+                "status": "SUCCESS",
+                "message": "action completed",
+                "data": {},
+            },
+            {
+                "action_id": "action-002",
+                "success": True,
+                "status": "SUCCESS",
+                "message": "action completed",
+                "data": {},
+            },
+        ],
         "result_count": 2,
     }
 

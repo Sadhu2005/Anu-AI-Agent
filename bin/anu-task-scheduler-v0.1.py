@@ -120,3 +120,76 @@ def consume_dependency_wake_plan(plan, handlers):
         results.append(result)
 
     return results
+
+
+def build_wake_execution_handler(start_task, execution_resolver):
+    """
+    Build a WAKE action handler around the existing task-engine start_task API.
+
+    The adapter is deliberately database-free. It accepts only a READY/WAKE
+    plan item, resolves the execution descriptor for that task, validates the
+    descriptor, and delegates to start_task() without changing the plan item.
+    """
+    if not callable(start_task):
+        raise TypeError("start_task must be callable")
+
+    if not callable(execution_resolver):
+        raise TypeError("execution_resolver must be callable")
+
+    def handle(plan_item):
+        if not isinstance(plan_item, dict):
+            raise TypeError("plan_item must be a dictionary")
+
+        if plan_item.get("action") != "WAKE":
+            raise ValueError(
+                f"WAKE handler received action={plan_item.get('action')!r}"
+            )
+
+        if plan_item.get("state") != "READY":
+            raise ValueError(
+                f"WAKE requires dependency state READY, "
+                f"got={plan_item.get('state')!r}"
+            )
+
+        if "task_id" not in plan_item:
+            raise ValueError("WAKE plan item missing task_id")
+
+        task_id = plan_item["task_id"]
+        execution = execution_resolver(task_id)
+
+        if execution is None:
+            raise ValueError(
+                f"No execution descriptor for task_id={task_id}"
+            )
+
+        if not isinstance(execution, dict):
+            raise TypeError(
+                "execution_resolver must return a dictionary or None"
+            )
+
+        required = (
+            "project",
+            "changes_file",
+            "operation",
+        )
+
+        missing = [
+            key
+            for key in required
+            if not execution.get(key)
+        ]
+
+        if missing:
+            raise ValueError(
+                "Execution descriptor missing required fields: "
+                + ", ".join(missing)
+            )
+
+        return start_task(
+            task_id,
+            execution["project"],
+            execution["changes_file"],
+            execution["operation"],
+        )
+
+    return handle

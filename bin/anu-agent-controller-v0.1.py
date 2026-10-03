@@ -296,6 +296,10 @@ class AgentController:
                 if self.plan is not None
                 else None
             ),
+            "results": [
+                result.to_dict()
+                for result in self._results
+            ],
             "result_count": len(self._results),
         }
 

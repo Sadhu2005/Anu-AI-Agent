@@ -101,6 +101,25 @@ def discover_ready_tasks(db):
     return ready
 
 
+def dispatch_ready_task_wakes(db, handlers):
+    """Discover ready tasks, build a revalidated WAKE plan, and consume it.
+
+    This is the scheduler orchestration boundary. It composes only the
+    existing read-only discovery/planning layers and the existing wake-plan
+    consumer. Execution remains behind the supplied handlers.
+    """
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    if handlers is None:
+        raise TypeError("handlers must be provided")
+
+    candidates = discover_ready_tasks(db)
+    plan = build_ready_task_wake_plan(db, candidates)
+
+    return consume_dependency_wake_plan(plan, handlers)
+
+
 def build_ready_task_wake_plan(db, candidates):
     """Convert ready scheduler candidates into a revalidated WAKE plan.
 

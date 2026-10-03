@@ -44,6 +44,63 @@ def _load_execution_spec():
     return module
 
 
+def discover_ready_tasks(db):
+    """Return pending tasks whose dependencies are currently READY.
+
+    Discovery is strictly read-only. The Task Graph remains the source of
+    dependency truth; this function never changes task status or attempts.
+    Results are ordered by priority descending, then task_id ascending.
+    """
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    graph = _load_graph()
+
+    rows = db.execute(
+        """
+        SELECT
+            id AS task_id,
+            status,
+            priority,
+            attempts
+        FROM tasks
+        WHERE status = 'pending'
+        ORDER BY priority DESC, id ASC
+        """
+    ).fetchall()
+
+    ready = []
+
+    for row in rows:
+        if hasattr(row, "keys"):
+            task_id = row["task_id"]
+            status = row["status"]
+            priority = row["priority"]
+            attempts = row["attempts"]
+        else:
+            task_id = row[0]
+            status = row[1]
+            priority = row[2]
+            attempts = row[3]
+
+        admission = graph.dependency_readiness(
+            db,
+            task_id,
+        )
+
+        if admission.get("state") != "READY":
+            continue
+
+        ready.append({
+            "task_id": task_id,
+            "status": status,
+            "priority": priority,
+            "attempts": attempts,
+        })
+
+    return ready
+
+
 def build_dependency_wake_plan(db, prerequisite_task_id):
     """
     Build a deterministic, read-only action plan for dependents.

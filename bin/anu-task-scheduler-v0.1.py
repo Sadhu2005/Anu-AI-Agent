@@ -101,6 +101,65 @@ def discover_ready_tasks(db):
     return ready
 
 
+def build_ready_task_wake_plan(db, candidates):
+    """Convert ready scheduler candidates into a revalidated WAKE plan.
+
+    The Task Graph remains the source of dependency truth. This function is
+    strictly read-only: it never changes task status or attempts and never
+    invokes the execution engine.
+    """
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    if candidates is None:
+        raise TypeError("candidates must be an iterable of candidate mappings")
+
+    graph = _load_graph()
+    plan = []
+
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            raise TypeError("each candidate must be a dict")
+
+        required = (
+            "task_id",
+            "status",
+            "priority",
+            "attempts",
+        )
+        missing = [key for key in required if key not in candidate]
+        if missing:
+            raise KeyError(
+                f"candidate missing required fields: {missing}"
+            )
+
+        if candidate["status"] != "pending":
+            raise ValueError(
+                f"candidate task {candidate['task_id']} is not pending"
+            )
+
+        admission = graph.dependency_readiness(db, candidate["task_id"])
+        state = admission.get("state")
+
+        if state != "READY":
+            raise ValueError(
+                f"candidate task {candidate['task_id']} is no longer READY: "
+                f"{state!r}"
+            )
+
+        plan.append(
+            {
+                "task_id": candidate["task_id"],
+                "action": "WAKE",
+                "current_status": candidate["status"],
+                "current_attempts": candidate["attempts"],
+                "state": "READY",
+            }
+        )
+
+    return plan
+
+
 def build_dependency_wake_plan(db, prerequisite_task_id):
     """
     Build a deterministic, read-only action plan for dependents.

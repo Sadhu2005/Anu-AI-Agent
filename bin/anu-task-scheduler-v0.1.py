@@ -6,6 +6,9 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 GRAPH_MODULE = BASE / "bin" / "anu-task-graph-v0.1.py"
+EXECUTION_SPEC_MODULE = (
+    BASE / "bin" / "anu-task-execution-spec-v0.1.py"
+)
 
 
 def _load_graph():
@@ -17,6 +20,23 @@ def _load_graph():
     if spec is None or spec.loader is None:
         raise RuntimeError(
             f"Unable to load Task Graph module: {GRAPH_MODULE}"
+        )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_execution_spec():
+    spec = importlib.util.spec_from_file_location(
+        "anu_task_execution_spec_v0_1_scheduler",
+        EXECUTION_SPEC_MODULE,
+    )
+
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Unable to load execution-spec module: "
+            f"{EXECUTION_SPEC_MODULE}"
         )
 
     module = importlib.util.module_from_spec(spec)
@@ -193,3 +213,56 @@ def build_wake_execution_handler(start_task, execution_resolver):
         )
 
     return handle
+
+
+def build_db_bound_wake_execution_handler(db, start_task):
+    """Bind a database-backed execution descriptor resolver to WAKE."""
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    if not callable(start_task):
+        raise TypeError("start_task must be callable")
+
+    execution_spec = _load_execution_spec()
+
+    fetch = getattr(
+        execution_spec,
+        "fetch_execution_descriptor",
+        None,
+    )
+
+    if not callable(fetch):
+        raise RuntimeError(
+            "Execution-spec module must provide "
+            "fetch_execution_descriptor(db, task_id)"
+        )
+
+    def execution_resolver(task_id):
+        return fetch(db, task_id)
+
+    return build_wake_execution_handler(
+        start_task,
+        execution_resolver,
+    )
+
+
+def resolve_execution_descriptor(db, task_id):
+    """Resolve a task descriptor through the execution-spec owner.
+
+    The scheduler does not issue execution-spec SQL directly.
+    """
+    execution_spec = _load_execution_spec()
+
+    fetch = getattr(
+        execution_spec,
+        "fetch_execution_descriptor",
+        None,
+    )
+
+    if not callable(fetch):
+        raise RuntimeError(
+            "Execution-spec module must provide "
+            "fetch_execution_descriptor(db, task_id)"
+        )
+
+    return fetch(db, task_id)

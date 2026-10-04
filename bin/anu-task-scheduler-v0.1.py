@@ -125,10 +125,10 @@ def run_scheduler_cycle_once(
     max_tasks,
     lock_path=None,
 ):
-    """Run the production scheduler through the scheduler lifecycle boundary.
+    """Run the legacy production scheduler lifecycle.
 
-    The lifecycle owns runtime locking and the SQLite connection. The
-    production scheduler remains responsible only for the scheduling cycle.
+    This entrypoint intentionally preserves the V0.5.4 callback contract:
+    scheduler lifecycle -> run_production_scheduler_cycle().
     """
     lifecycle = _load_lifecycle()
 
@@ -136,6 +136,26 @@ def run_scheduler_cycle_once(
         db_path=db_path,
         max_tasks=max_tasks,
         cycle_fn=run_production_scheduler_cycle,
+        lock_path=lock_path,
+    )
+
+
+def run_agent_scheduler_cycle_once(
+    db_path,
+    max_tasks,
+    lock_path=None,
+):
+    """Run the agent-aware production scheduler lifecycle.
+
+    This is the V0.5.8 production boundary for scheduler -> agent execution.
+    The lifecycle still owns locking and the SQLite connection.
+    """
+    lifecycle = _load_lifecycle()
+
+    return lifecycle.run_scheduler_cycle_once(
+        db_path=db_path,
+        max_tasks=max_tasks,
+        cycle_fn=run_production_agent_scheduler_cycle,
         lock_path=lock_path,
     )
 
@@ -165,6 +185,39 @@ def run_production_scheduler_cycle(db, max_tasks):
 
     plan = build_ready_task_wake_plan(db, selected)
     wake_handler = build_production_wake_execution_handler(db)
+
+    return consume_dependency_wake_plan(
+        plan,
+        {
+            "WAKE": wake_handler,
+        },
+    )
+
+
+def run_production_agent_scheduler_cycle(db, max_tasks):
+    """Run one bounded production cycle through the agent-aware WAKE path.
+
+    This is the V0.5.8 agent-aware counterpart to
+    run_production_scheduler_cycle(). The legacy function remains unchanged
+    for compatibility with earlier scheduler contracts.
+    """
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    if isinstance(max_tasks, bool) or not isinstance(max_tasks, int):
+        raise TypeError("max_tasks must be a positive integer")
+
+    if max_tasks <= 0:
+        raise ValueError("max_tasks must be a positive integer")
+
+    candidates = discover_ready_tasks(db)
+    selected = candidates[:max_tasks]
+
+    if not selected:
+        return []
+
+    plan = build_ready_task_wake_plan(db, selected)
+    wake_handler = build_production_agent_wake_execution_handler(db)
 
     return consume_dependency_wake_plan(
         plan,
@@ -447,6 +500,10 @@ TASK_ENGINE_MODULE = (
     BASE / "bin" / "anu-task-engine-v0.5.3.py"
 )
 
+AGENT_EXECUTION_RUNTIME_MODULE = (
+    BASE / "bin" / "anu-agent-task-execution-runtime-v0.1.py"
+)
+
 
 def _load_task_engine():
     """Load the frozen V0.5.3 Task Engine without executing a task."""
@@ -463,6 +520,46 @@ def _load_task_engine():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_agent_execution_runtime():
+    spec = importlib.util.spec_from_file_location(
+        "anu_agent_task_execution_runtime_v0_1_scheduler",
+        AGENT_EXECUTION_RUNTIME_MODULE,
+    )
+
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Unable to load agent execution runtime: "
+            f"{AGENT_EXECUTION_RUNTIME_MODULE}"
+        )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def build_production_agent_wake_execution_handler(db):
+    """Bind production WAKE dispatch to the agent-aware execution runtime."""
+
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+
+    runtime = _load_agent_execution_runtime()
+
+    handler_factory = getattr(
+        runtime,
+        "build_production_agent_execution_handler",
+        None,
+    )
+
+    if not callable(handler_factory):
+        raise RuntimeError(
+            "Agent execution runtime must provide callable "
+            "build_production_agent_execution_handler"
+        )
+
+    return handler_factory(db)
 
 
 def build_production_wake_execution_handler(db):

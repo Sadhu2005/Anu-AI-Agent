@@ -1,0 +1,68 @@
+[Unit]
+Description=ANU Autonomous Development Agent Runtime
+After=local-fs.target
+Requires=anu-agent.slice
+ConditionPathExists=/srv/anu/config/anu-policy.yaml
+ConditionPathExists=/srv/anu/bin/anu-runtime.py
+
+[Service]
+Type=simple
+
+User=anu-agent
+Group=anu-agent
+
+WorkingDirectory=/srv/anu/home
+
+ExecStart=/usr/bin/python3 /srv/anu/bin/anu-runtime.py
+
+Restart=on-failure
+RestartSec=10
+
+Slice=anu-agent.slice
+
+UMask=0077
+
+# Privilege protection
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Filesystem protection
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+# Kernel/system protection
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+
+# No network for the current ANU runtime.
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+
+# ANU needs to read its code/config but only write inside its
+# designated runtime directories.
+ReadOnlyPaths=/srv/anu/config
+ReadOnlyPaths=/srv/anu/bin
+ReadOnlyPaths=/srv/anu/src
+
+ReadWritePaths=/srv/anu/home
+ReadWritePaths=/srv/anu/brain
+ReadWritePaths=/srv/anu/workspace
+ReadWritePaths=/srv/anu/sandbox
+ReadWritePaths=/srv/anu/browser
+ReadWritePaths=/srv/anu/logs
+ReadWritePaths=/srv/anu/runtime
+ReadWritePaths=/srv/anu/secrets
+ReadWritePaths=/srv/anu/tests
+
+# Make ANU disposable under system memory pressure.
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=multi-user.target

@@ -16,3 +16,14 @@ workspace/
 browser/
 sandbox/
 secrets/
+
+# Secrets and data that must never reach the public repository
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.db
+*.db-wal
+*.db-shm
+*.sqlite

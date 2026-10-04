@@ -18,6 +18,7 @@ filesystem:
     - /srv/anu/browser
     - /srv/anu/logs
     - /srv/anu/runtime
+    - /srv/anu/checkpoints
     - /srv/anu/secrets
     - /srv/anu/tests
 
@@ -63,6 +64,8 @@ browser:
   profile: /srv/anu/browser/anu-profile
   downloads: /srv/anu/browser/anu-downloads
 
+# ANU has no direct Docker access. Sandboxed execution goes only through
+# the root anu-sandboxd service (python-sandbox execution profile).
 docker:
   enabled: false
 
@@ -82,8 +85,9 @@ resources:
   max_cpu_percent: 50
   max_memory_mb: 3072
   max_parallel_tasks: 1
-  temperature_limit_celsius: 70
+  temperature_limit_celsius: 65
 
 execution:
   max_command_timeout_seconds: 1800
-  max_retries_per_task: 5
+  # Must match MAX_ATTEMPTS in the Task Engine and task graph.
+  max_attempts_per_task: 3

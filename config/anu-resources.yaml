@@ -10,13 +10,16 @@ resource_policy:
     max_mb: 3072
     emergency_free_mb: 1024
 
+  # Must match host_safety in anu-admission-policy.yaml.
+  # The runtime only schedules work while the Guardian reports NORMAL,
+  # so warning_celsius is the point where new autonomous work stops.
   temperature:
-    warning_celsius: 65
-    pause_celsius: 70
-    resume_celsius: 60
+    warning_celsius: 60
+    pause_celsius: 65
+    resume_celsius: 55
 
   storage:
-    minimum_free_gb: 20
+    minimum_free_gb: 50
 
   production:
     priority: highest

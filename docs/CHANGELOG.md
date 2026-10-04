@@ -1,0 +1,67 @@
+# ANU Changelog
+
+Short summary per version. Full detail, design, tests, and evidence are in
+[versions/](versions/).
+
+## [V0.5.9] — In progress
+
+Autonomous production execution.
+
+- Runtime runs one scheduler tick per cycle, only when the Guardian reports `NORMAL`
+- Scheduler lock file, `max_tasks = 1`, failures logged without crashing the runtime
+- Integer `goal_id` from SQLite normalised to string for `AgentGoal`
+- Safe Mutation resolves `changes_file` relative to the project, not the process working directory
+- `/srv/anu/checkpoints` writable under the systemd service
+- Resource policy aligned across config files: 60 °C warning, 65 °C pause, 55 °C resume, 50 GB free disk, 3 attempts per task
+- First real autonomous task (186) dispatched by the production service; reached the Safe Mutation boundary
+- Tests: `test_runtime_scheduler_tick_v0_5_9`, `test_agent_task_adapter_goal_id_v0_5_9`, `test_safe_mutation_changes_path_v0_5_9`
+
+## [V0.5.8] — 2026-10-04 · `1996199`
+
+- Agent-aware scheduler lifecycle: scheduler wakes the agent, not the bare Task Engine
+- Tests: `test_agent_wake_binding_v0_5_8`, `test_real_agent_wake_chain_v0_5_8`
+
+## [V0.5.7] — 2026-10-03 · `718441c`
+
+- WAITING is a resumable state; waiting goals re-wake and continue
+- Tests: `test_agent_waiting_lifecycle_v0_5_7`, `test_waiting_rewake_v0_5_7`
+
+## [V0.5.6] — 2026-10-03 · `9fe804f`
+
+- Task → AgentGoal adapter, task-id bridge, task execution adapter and runtime
+- Agent execution results preserved end-to-end
+- Tests: five `*_v0_5_6` suites
+
+## [V0.5.5] — 2026-10-03 · tag `v0.5.5` · `36c666a`
+
+- Agent model (`AgentGoal`, `AgentAction`, `AgentPlan`, `AgentResult`)
+- Agent state machine and controller
+- Scheduler lifecycle runtime
+- Tests: agent model, state machine, controller, scheduler lifecycle
+
+## [V0.5.4] — 2026-10-03 · `d896412`
+
+- Dependency wake planner, consumer, execution adapter
+- Execution specification per task (project, changes file, operation)
+- Scheduler candidate discovery, READY → WAKE plan, dispatch
+- Bounded production scheduler cycle
+- Tests: fifteen `*_v0_5_4` suites across ten checkpoint commits
+
+## [V0.5.3] — 2026-10-03 · tag `v0.5.3` · `1b5968b`
+
+- Canonical Task Engine baseline (`anu-task-engine-v0.5.3.py`)
+- Task dependency graph with cycle prevention
+- Dependency admission: only `READY` tasks start
+- All configuration brought under version control
+
+## [V0.5.2] — 2026-10-03 · tag `v0.5.2` · `067e58d`
+
+- First git commit (26 files, 9,493 lines)
+- Checkpoint corruption detection, concurrent contention, multi-file mutation, retry exhaustion
+
+## [Foundation] — up to V0.5.1
+
+- Runtime, Resource Guardian and Governor, command gateway, executor,
+  execution profiles, Docker sandbox daemon, result normaliser
+- Safe Mutation v0.1 → v0.2 with checkpoints and verified rollback
+- Task Engine v0.3 → v0.5.1 with explicit retry semantics

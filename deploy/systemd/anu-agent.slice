@@ -1,0 +1,22 @@
+[Unit]
+Description=ANU AI Agent Resource Slice
+Before=anu-agent.service
+
+[Slice]
+CPUAccounting=yes
+MemoryAccounting=yes
+
+# 200% = up to roughly two CPU cores worth of CPU time.
+CPUQuota=200%
+
+# Start applying memory pressure before the hard limit.
+MemoryHigh=2560M
+
+# Hard RAM ceiling for ANU workloads.
+MemoryMax=3072M
+
+# Prevent accidental process explosion.
+TasksMax=64
+
+# Lower I/O priority relative to important services.
+IOWeight=50

@@ -28,9 +28,9 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.5.9, in progress (~80–85%) |
-| **Proven** | The production service autonomously picked up a real task and drove it through scheduler → agent → controller → task engine → Safe Mutation |
-| **Next gate** | First fully successful autonomous mutation: checkpoint → change → test pass → COMMITTED → task COMPLETE |
+| **Version** | V0.5.9, frozen 5 Oct 2026 (tag `v0.5.9`) |
+| **Proven** | The production service autonomously committed a real code change (checkpoint → change → test pass → COMMITTED → task complete) and safely rolled back a failing one (test failure → rollback → integrity verified) |
+| **Next** | V0.6.0: retry, crash/restart recovery, idempotent mutations |
 | **Then** | V0.6.x reliability, planning, capabilities, memory → V0.7.0 real agent runtime |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.

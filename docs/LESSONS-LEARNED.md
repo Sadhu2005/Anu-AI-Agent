@@ -474,6 +474,22 @@ edited in place. An agent trusted to change code needs its **own** code to be
 traceable, tested in isolation, and deployed from a known commit.
 *(Development contract.)*
 
+### D. A fix can break an older contract; only the full suite shows it
+
+The V0.5.9 changes-file fix passed its own regression test, and the real
+task 186 then COMMITTED. The first **full** run still failed 6 of 42 tests.
+The fix had reused `resolve_file`, the strict resolver for mutation
+*targets*, for the changes *file*, so absolute changes-file paths, accepted
+since V0.5.1, were suddenly rejected. Separately, three old tests depended on
+the exact text of the live sandbox fixture, which the successful task had
+just changed.
+
+Rule: **never reuse a validator written for a different kind of input,
+because each input has its own contract.** A version is not proven by its
+new test or its new success alone; the full regression must pass on the real
+system before freeze. Tests must own their fixtures. *(Contract reuse,
+test isolation.)*
+
 ---
 
 ## Adding a Lesson

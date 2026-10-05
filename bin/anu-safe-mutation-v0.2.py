@@ -62,6 +62,17 @@ def resolve_file(project, relative_file):
     return target
 
 
+def resolve_changes_file(project, changes_file):
+    # Absolute paths keep the pre-V0.5.9 contract; relative paths are
+    # resolved inside the project, never against the process working directory.
+    if not changes_file:
+        fail('Invalid changes file path.')
+    p = Path(changes_file)
+    if p.is_absolute():
+        return p
+    return resolve_file(project, changes_file)
+
+
 def sha256_file(path):
     digest = hashlib.sha256()
     with path.open('rb') as f:
@@ -388,7 +399,8 @@ def main():
 
     ensure_state()
     project = resolve_project(args.project)
-    changes = load_changes(args.changes_file)
+    changes_path = resolve_changes_file(project, args.changes_file)
+    changes = load_changes(changes_path)
     transaction_id = f'mut-{utc_stamp()}-{uuid.uuid4().hex[:8]}'
 
     tx = {

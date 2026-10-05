@@ -52,12 +52,13 @@ the next version.
 | [V0.5.6](versions/v0.5.6.md) | Task ↔ agent adapters, execution result preservation | Frozen | branch `v0.5.6-integration` |
 | [V0.5.7](versions/v0.5.7.md) | Real WAITING lifecycle and re-wake | Frozen | branch `v0.5.7-integration` |
 | [V0.5.8](versions/v0.5.8.md) | Agent-aware scheduler lifecycle boundary | Frozen | branch `v0.5.8-integration` |
+| [V0.5.9](versions/v0.5.9.md) | Autonomous production execution | Frozen | tag `v0.5.9` |
 
 ### In progress
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.5.9](versions/v0.5.9.md) | Autonomous production execution | ~80–85%, final execution gate not passed |
+| [V0.6.0](versions/v0.6.0.md) | Reliable autonomous execution | Next |
 
 ### Planned
 

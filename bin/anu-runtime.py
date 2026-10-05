@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import importlib.util
 import json
 import signal
 import subprocess
@@ -11,10 +12,15 @@ from pathlib import Path
 BASE = Path("/srv/anu")
 
 GUARDIAN = BASE / "bin" / "anu-resource-guardian.py"
+SCHEDULER = BASE / "bin" / "anu-task-scheduler-v0.1.py"
+DB_FILE = BASE / "brain" / "anu-brain.db"
+SCHEDULER_LOCK_FILE = BASE / "runtime" / "anu-scheduler.lock"
+
 LOG_FILE = BASE / "logs" / "anu.log"
 STATE_FILE = BASE / "runtime" / "anu-state.json"
 
 INTERVAL_SECONDS = 60
+SCHEDULER_MAX_TASKS = 1
 
 running = True
 
@@ -44,6 +50,86 @@ def save_state(data):
 def signal_handler(signum, frame):
     global running
     running = False
+
+
+def _load_scheduler():
+    spec = importlib.util.spec_from_file_location(
+        "anu_task_scheduler_v0_1_runtime",
+        SCHEDULER,
+    )
+
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Unable to load scheduler module: {SCHEDULER}"
+        )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def scheduler_execution_allowed(guardian_data):
+    if not isinstance(guardian_data, dict):
+        return False
+
+    return (
+        str(
+            guardian_data.get("status", "")
+        ).strip().upper()
+        == "NORMAL"
+    )
+
+
+def run_agent_scheduler_cycle(guardian_data):
+    if not scheduler_execution_allowed(guardian_data):
+        status = (
+            guardian_data.get("status", "UNKNOWN")
+            if isinstance(guardian_data, dict)
+            else "UNKNOWN"
+        )
+
+        write_log(
+            f"Scheduler skipped: resource status={status}"
+        )
+
+        return {
+            "status": "SKIPPED_RESOURCE",
+            "resource_status": status,
+        }
+
+    try:
+        scheduler = _load_scheduler()
+
+        result = scheduler.run_agent_scheduler_cycle_once(
+            db_path=str(DB_FILE),
+            max_tasks=SCHEDULER_MAX_TASKS,
+            lock_path=str(SCHEDULER_LOCK_FILE),
+        )
+
+        if isinstance(result, list):
+            write_log(
+                f"Scheduler cycle completed: results={len(result)}"
+            )
+        elif isinstance(result, dict):
+            write_log(
+                f"Scheduler cycle completed: status="
+                f"{result.get('status', 'UNKNOWN')}"
+            )
+        else:
+            write_log(
+                f"Scheduler cycle completed: result_type="
+                f"{type(result).__name__}"
+            )
+
+        return result
+
+    except Exception as exc:
+        write_log(
+            "Scheduler cycle failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+        return None
 
 
 def run_resource_guardian():
@@ -126,6 +212,8 @@ def main():
                     "disk"
                 ),
             })
+
+            run_agent_scheduler_cycle(data)
 
         else:
             write_log(

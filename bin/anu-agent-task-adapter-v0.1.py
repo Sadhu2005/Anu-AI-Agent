@@ -75,6 +75,11 @@ def task_to_agent_goal(task):
             "task cannot become AgentGoal: goal_id is missing"
         )
 
+    # SQLite-backed Task Engine records use INTEGER goal IDs,
+    # while the AgentGoal model requires a string identity.
+    if isinstance(goal_id, int) and not isinstance(goal_id, bool):
+        goal_id = str(goal_id)
+
     if description is None:
         raise ValueError(
             "task cannot become AgentGoal: description is missing"

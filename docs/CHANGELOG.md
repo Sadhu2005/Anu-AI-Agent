@@ -3,17 +3,19 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.5.9] — In progress
+## [V0.5.9] — 2026-10-05 · tag `v0.5.9`
 
-Autonomous production execution.
+Autonomous production execution: **first autonomous commit and rollback by
+the production service.**
 
 - Runtime runs one scheduler tick per cycle, only when the Guardian reports `NORMAL`
 - Scheduler lock file, `max_tasks = 1`, failures logged without crashing the runtime
 - Integer `goal_id` from SQLite normalised to string for `AgentGoal`
-- Safe Mutation resolves `changes_file` relative to the project, not the process working directory
+- Safe Mutation `resolve_changes_file`: relative changes files resolve inside the project, not the process working directory; absolute paths keep the earlier contract
 - `/srv/anu/checkpoints` writable under the systemd service
-- Resource policy aligned across config files: 60 °C warning, 65 °C pause, 55 °C resume, 50 GB free disk, 3 attempts per task
-- First real autonomous task (186) dispatched by the production service; reached the Safe Mutation boundary
+- Resource policy aligned across config files and deployed: 60 °C warning, 65 °C pause, 55 °C resume, 50 GB free disk, 3 attempts per task
+- Task 186 COMMITTED and completed autonomously; task 187 ROLLED_BACK with verified integrity; task 192 COMMITTED
+- Full regression 42 / 42
 - Tests: `test_runtime_scheduler_tick_v0_5_9`, `test_agent_task_adapter_goal_id_v0_5_9`, `test_safe_mutation_changes_path_v0_5_9`
 
 ## [V0.5.8] — 2026-10-04 · `1996199`

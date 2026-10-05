@@ -182,7 +182,8 @@ Summarised in [CHANGELOG.md](CHANGELOG.md), in full detail in
 | 3 Oct 22:13 | V0.5.6 | Task ↔ agent adapters, execution results preserved |
 | 3 Oct 22:41 | V0.5.7 | WAITING and re-wake |
 | 4 Oct 17:24 | V0.5.8 | Agent-aware scheduler |
-| 4 Oct | V0.5.9 | Production runtime runs the scheduler; first real autonomous task (in progress) |
+| 4 Oct | V0.5.9 | Production runtime runs the scheduler; first real autonomous task reaches Safe Mutation (blocked by changes-file path) |
+| 5 Oct 04:56 | V0.5.9 | **First autonomous COMMITTED mutation** (task 186) and verified rollback (task 187) by the production service; 42 / 42 regression; frozen |
 
 (Git times are Pi local time, UTC+1. All other times in this document are UTC.)
 

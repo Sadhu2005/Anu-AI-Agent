@@ -61,6 +61,11 @@ Tests use hard-coded `/srv/anu` paths and only run on the Pi.
   `test_task_graph_v0_5_3`, `test_task_graph_v0_5_4`,
   `test_dependency_wake_planner_v0_5_4`.
   Some of them also mutate a real project under `workspace/projects/`.
+- `test_functional_failure_rollback_v0_5_1`, `test_task_execution_context_e2e_v0_5_1`,
+  and `test_multi_file_mutation_v0_5_2` require the live fixture
+  `sandbox-test-project/app.py` to contain `return (a + b)`. A real task that
+  changes that line breaks them, as happened at the V0.5.9 freeze. Restore
+  the fixture through a task, not by hand.
 
 Consequences: test runs create real rows in the production brain, and running
 tests while the service is active can interfere with autonomous work (shared

@@ -32,7 +32,7 @@ Foundation   ████████████████████  100%
 V0.5.6       ████████████████████  100%
 V0.5.7       ████████████████████  100%
 V0.5.8       ████████████████████  100%
-V0.5.9       ████████████████░░░░  80–85%
+V0.5.9       ████████████████████  100%
 V0.6.x       ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
@@ -54,9 +54,9 @@ V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 | [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening (security release) | Security gaps G1–G3 closed with evidence, consistency, failure injection; feature freeze | all V0.6.x |
 | [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Goal → plan → execute → verify → remember, as one system | V0.6.9 |
 
-## Immediate Target
+## Milestone Reached (V0.5.9, 5 Oct 2026)
 
-Prove this exact sequence on the Raspberry Pi through the production service:
+Proven on the Raspberry Pi through the production service:
 
 ```text
 TASK 186 → production scheduler → AgentController → Task Engine
@@ -64,9 +64,15 @@ TASK 186 → production scheduler → AgentController → Task Engine
 → COMMITTED → mutation transaction persisted → TASK COMPLETE
 ```
 
-Once that works, V0.5.9 is ANU's first demonstrated autonomous production
-execution milestone, and V0.6 makes that mechanism recoverable, repeatable,
-and intelligent.
+and the failure path (task 187): mutation → TEST_FAILURE → rollback →
+integrity verified → ROLLED_BACK. This is ANU's first demonstrated
+autonomous production execution ([evidence](versions/v0.5.9.md#evidence)).
+
+## Immediate Target
+
+[V0.6.0](versions/v0.6.0.md): make that mechanism recoverable and repeatable:
+classified retry, crash/restart recovery of interrupted runs, idempotent
+mutations, and a supported way to make a blocked task runnable again.
 
 ## Beyond V0.7.0
 

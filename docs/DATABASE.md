@@ -141,6 +141,8 @@ executable work.
 | `priority` | Scheduling priority, default 5 |
 | `attempts` | Attempts used; `MAX_ATTEMPTS = 3` |
 | `created_at`, `updated_at` | Lifecycle timestamps |
+| `failure_class` | From V0.6.0. Why the last attempt did not complete: `code_defect`, `environment`, `contract`, `integrity` or `interrupted`. `NULL` while an attempt runs and after success. |
+| `retry_after` | From V0.6.0. ISO-8601 UTC time before which the scheduler will not pick this `pending` task; set only for interrupted work. |
 
 ---
 
@@ -161,8 +163,11 @@ pending → planning → ready → running → verifying → completed
 | `TERMINAL` | `completed`, `blocked` |
 | Retryable | `failed` (until attempts are exhausted, then `blocked`) |
 
-A task found in `planning`, `running`, or `verifying` after a crash is an
-interrupted run. Detecting and recovering it is [V0.6.0](versions/v0.6.0.md).
+A task found in `planning`, `ready`, `running`, or `verifying` after a crash
+is an interrupted run. Since [V0.6.0](versions/v0.6.0.md), recovery returns it
+to `pending` with `failure_class = 'interrupted'` and a `retry_after` of 2,
+then 10 minutes. Once all 3 attempts are used it becomes `blocked`. No other
+failure is retried automatically.
 
 The **Agent Controller** has a separate, in-process lifecycle
 (`AgentState` in `anu-agent-runtime-v0.1.py`):

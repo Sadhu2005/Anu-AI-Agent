@@ -63,8 +63,10 @@ def test_no_scheduling_until_recovery_has_run():
         {"status": "RECOVERED",
          "transactions": [{"transaction_id": "mut-x", "status": "INTERRUPTED_ROLLED_BACK",
                            "reason": "applied change restored from checkpoint"}],
-         "tasks": [{"task_id": 5, "previous_status": "running", "status": "failed",
-                    "reason": "interrupted"}]},
+         "tasks": [{"task_id": 5, "previous_status": "running", "status": "pending",
+                    "failure_class": "interrupted",
+                    "retry_after": "2026-10-15T12:02:00+00:00",
+                    "reason": "interrupted; retry scheduled"}]},
     )
     runtime._load_scheduler = lambda: scheduler
     runtime._load_recovery = lambda: recovery
@@ -78,7 +80,11 @@ def test_no_scheduling_until_recovery_has_run():
     assert runtime.run_runtime_iteration() == []
     assert runtime.recovery_done is True and scheduler.cycles == 1
     assert "Recovery RECOVERED: transactions=1 tasks=1" in runtime.messages
-    assert any("Recovery task 5: running -> failed (interrupted)" in m for m in runtime.messages)
+    assert any(
+        "Recovery task 5: running -> pending (interrupted; retry scheduled) "
+        "retry_after=2026-10-15T12:02:00+00:00" in m
+        for m in runtime.messages
+    ), runtime.messages
 
     assert runtime.run_runtime_iteration() == []
     assert recovery.calls == 3 and scheduler.cycles == 2, "recovery runs once per runtime start"
@@ -127,16 +133,17 @@ def test_engine_recovers_a_lost_mutation_immediately():
 
         assert code == 6, code
         assert result["reason"] == "invalid_mutation_engine_response", result
-        assert result["task_status"] == "failed", result
+        assert result["task_status"] == "pending", result
         assert result["retryable"] is True
+        assert result["failure_class"] == "interrupted" and result["retry_after"], result
         assert result["recovery"]["status"] == "RECOVERED", result["recovery"]
-        assert engine.fetch_task(task_id)["status"] == "failed"
+        assert engine.fetch_task(task_id)["status"] == "pending"
 
         seen = events(engine, task_id)
         assert "TASK_MUTATION_LOST" in seen and "RECOVERY_TASK" in seen, seen
         assert "TASK_BLOCKED" not in seen, seen
 
-    print("PASS Task Engine: a silently dead Safe Mutation is recovered at once (task failed, retryable)")
+    print("PASS Task Engine: a silently dead Safe Mutation is recovered at once (retry scheduled)")
 
 
 def test_engine_blocks_when_recovery_cannot_run():
@@ -155,6 +162,7 @@ def test_engine_blocks_when_recovery_cannot_run():
         assert result["recovery"] == {"status": "DEFERRED_ACTIVE_EXECUTION"}, result
         assert result["task_status"] == "blocked", result
         assert result["retryable"] is False
+        assert result["failure_class"] == "interrupted", result
 
         with sqlite3.connect(engine.DB_FILE) as db:
             meta = json.loads(db.execute(

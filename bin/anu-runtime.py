@@ -125,10 +125,15 @@ def run_startup_recovery():
         )
 
     for item in result.get("tasks", []):
+        retry = (
+            f" retry_after={item['retry_after']}"
+            if item.get("retry_after")
+            else ""
+        )
         write_log(
             f"Recovery task {item.get('task_id')}: "
             f"{item.get('previous_status')} -> {item.get('status')} "
-            f"({item.get('reason')})"
+            f"({item.get('reason')}){retry}"
         )
 
     return result

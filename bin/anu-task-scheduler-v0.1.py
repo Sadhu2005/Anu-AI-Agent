@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import importlib.util
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -63,25 +64,57 @@ def _load_lifecycle():
     return module
 
 
-def discover_ready_tasks(db):
+def _has_task_column(db, column):
+    try:
+        return any(row[1] == column for row in db.execute("PRAGMA table_info(tasks)"))
+    except Exception:
+        return False
+
+
+def _retry_due(retry_after, now):
+    """A pending task with a future (or unreadable) retry_after is not due."""
+    if retry_after is None:
+        return True
+
+    try:
+        due = datetime.fromisoformat(str(retry_after))
+    except ValueError:
+        return False
+
+    if due.tzinfo is None:
+        due = due.replace(tzinfo=timezone.utc)
+
+    return due <= now
+
+
+def discover_ready_tasks(db, now=None):
     """Return pending tasks whose dependencies are currently READY.
 
     Discovery is strictly read-only. The Task Graph remains the source of
     dependency truth; this function never changes task status or attempts.
+    A task whose retry_after backoff has not elapsed is skipped (V0.6.0).
     Results are ordered by priority descending, then task_id ascending.
     """
     if db is None or not hasattr(db, "execute"):
         raise TypeError("db must provide an execute() method")
 
     graph = _load_graph()
+    now = now or datetime.now(timezone.utc)
+
+    retry_after_column = (
+        "retry_after"
+        if _has_task_column(db, "retry_after")
+        else "NULL AS retry_after"
+    )
 
     rows = db.execute(
-        """
+        f"""
         SELECT
             id AS task_id,
             status,
             priority,
-            attempts
+            attempts,
+            {retry_after_column}
         FROM tasks
         WHERE status = 'pending'
         ORDER BY priority DESC, id ASC
@@ -96,11 +129,16 @@ def discover_ready_tasks(db):
             status = row["status"]
             priority = row["priority"]
             attempts = row["attempts"]
+            retry_after = row["retry_after"]
         else:
             task_id = row[0]
             status = row[1]
             priority = row[2]
             attempts = row[3]
+            retry_after = row[4]
+
+        if not _retry_due(retry_after, now):
+            continue
 
         admission = graph.dependency_readiness(
             db,

@@ -11,6 +11,8 @@ Safety model:
   a failed mutation plan.
 - Blocked tasks are not automatically retried because the failure may be
   environmental/policy-related rather than a code defect.
+- Interrupted work (V0.6.0) is the one exception: recovery returns it to
+  pending with a retry_after backoff, re-running the same plan.
 """
 
 import argparse
@@ -44,6 +46,19 @@ LOST_MUTATION_REASONS = {
     "mutation_engine_timeout",
     "invalid_mutation_engine_response",
 }
+
+# Mutation endings that fail or block a task, by failure class (V0.6.0
+# section 3.4). Must match FAILURE_CLASSES in anu-recovery-v0.1.py.
+FAILURE_CLASSES = {
+    "ROLLED_BACK": "code_defect",
+    "ABORTED_BASELINE_FAILURE": "environment",
+    "MUTATION_ENGINE_ERROR": "contract",
+    "ROLLBACK_VERIFICATION_FAILED": "integrity",
+    "INTERRUPTED_CONFLICT": "integrity",
+}
+
+TASK_RETRY_COLUMNS = ("failure_class", "retry_after")
+UNCHANGED = object()
 
 
 def now_iso():
@@ -178,7 +193,34 @@ def fetch_task(task_id):
     return dict(row) if row else None
 
 
-def update_task(task_id, status=None, attempts=None):
+def ensure_task_columns(db):
+    present = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
+    for column in TASK_RETRY_COLUMNS:
+        if column not in present:
+            try:
+                db.execute(f"ALTER TABLE tasks ADD COLUMN {column} TEXT")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc):
+                    raise
+
+
+def fetch_retry_state(task_id):
+    with db_connect() as db:
+        ensure_task_columns(db)
+        row = db.execute(
+            "SELECT failure_class, retry_after FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+    return {"failure_class": row[0], "retry_after": row[1]} if row else None
+
+
+def update_task(
+    task_id,
+    status=None,
+    attempts=None,
+    failure_class=UNCHANGED,
+    retry_after=UNCHANGED,
+):
     fields = []
     values = []
 
@@ -190,11 +232,22 @@ def update_task(task_id, status=None, attempts=None):
         fields.append("attempts = ?")
         values.append(attempts)
 
+    retry_fields = {
+        "failure_class": failure_class,
+        "retry_after": retry_after,
+    }
+    for column, value in retry_fields.items():
+        if value is not UNCHANGED:
+            fields.append(f"{column} = ?")
+            values.append(value)
+
     fields.append("updated_at = ?")
     values.append(now_iso())
     values.append(task_id)
 
     with db_connect() as db:
+        if any(v is not UNCHANGED for v in retry_fields.values()):
+            ensure_task_columns(db)
         db.execute(
             f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?",
             values,
@@ -338,7 +391,12 @@ def _recover_lost_mutation(task_id, attempt, run_id, result, code):
     if task["status"] in IN_FLIGHT:
         # Recovery could not run, e.g. another execution holds the lock.
         # The STARTED transaction stays for startup recovery.
-        update_task(task_id, status="blocked")
+        update_task(
+            task_id,
+            status="blocked",
+            failure_class="interrupted",
+            retry_after=None,
+        )
         event(
             task_id,
             "TASK_BLOCKED",
@@ -352,11 +410,15 @@ def _recover_lost_mutation(task_id, attempt, run_id, result, code):
         )
         task = fetch_task(task_id)
 
+    retry_state = fetch_retry_state(task_id)
+
     return (
         {
             **result,
             "task_status": task["status"],
-            "retryable": task["status"] == "failed" and attempt < MAX_ATTEMPTS,
+            "retryable": task["status"] == "pending",
+            "failure_class": retry_state["failure_class"],
+            "retry_after": retry_state["retry_after"],
             "recovery": summary,
         },
         code,
@@ -377,7 +439,13 @@ def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_i
 
 
 def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run_id=None):
-    update_task(task_id, status="planning", attempts=attempt)
+    update_task(
+        task_id,
+        status="planning",
+        attempts=attempt,
+        failure_class=None,
+        retry_after=None,
+    )
     event(
         task_id,
         "TASK_STATE",
@@ -542,7 +610,11 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
         )
 
     if final_status == "failed":
-        update_task(task_id, status="failed")
+        update_task(
+            task_id,
+            status="failed",
+            failure_class=FAILURE_CLASSES["ROLLED_BACK"],
+        )
 
         retryable = attempt < MAX_ATTEMPTS
         event(
@@ -554,6 +626,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "run_id": run_id,
                 "max_attempts": MAX_ATTEMPTS,
                 "retryable": retryable,
+                "failure_class": FAILURE_CLASSES["ROLLED_BACK"],
                 "transaction_id": result.get("transaction_id"),
                 "mutation_status": result.get("status"),
                 "rollback_attempted": result.get("rollback_attempted"),
@@ -578,7 +651,8 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             process.returncode or 1,
         )
 
-    update_task(task_id, status="blocked")
+    failure_class = FAILURE_CLASSES.get(result.get("status"), "integrity")
+    update_task(task_id, status="blocked", failure_class=failure_class)
     event(
         task_id,
         "TASK_BLOCKED",
@@ -588,6 +662,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             "run_id": run_id,
             "transaction_id": result.get("transaction_id"),
             "mutation_status": result.get("status"),
+            "failure_class": failure_class,
         },
     )
 

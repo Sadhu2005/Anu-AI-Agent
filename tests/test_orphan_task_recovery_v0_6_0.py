@@ -63,6 +63,13 @@ def task_status(rec, task_id):
         return db.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()[0]
 
 
+def task_retry(rec, task_id):
+    with sqlite3.connect(rec.DB_FILE) as db:
+        return db.execute(
+            "SELECT failure_class, retry_after FROM tasks WHERE id = ?", (task_id,)
+        ).fetchone()
+
+
 def test_task_outcomes_follow_the_transaction():
     with tempfile.TemporaryDirectory() as tmp:
         rec = load_recovery(Path(tmp))
@@ -72,7 +79,7 @@ def test_task_outcomes_follow_the_transaction():
                 "committed": (add_task(db, "running"), "COMMITTED", "completed"),
                 "already": (add_task(db, "verifying"), "ALREADY_COMMITTED", "completed"),
                 "rolled_back": (add_task(db, "verifying"), "ROLLED_BACK", "failed"),
-                "started": (add_task(db, "running"), "STARTED", "failed"),
+                "started": (add_task(db, "running"), "STARTED", "pending"),
                 "baseline": (add_task(db, "verifying"), "ABORTED_BASELINE_FAILURE", "blocked"),
                 "engine_error": (add_task(db, "verifying"), "MUTATION_ENGINE_ERROR", "blocked"),
                 "rollback_failed": (add_task(db, "verifying"), "ROLLBACK_VERIFICATION_FAILED", "blocked"),
@@ -94,16 +101,26 @@ def test_task_outcomes_follow_the_transaction():
             assert actual == expected, (name, tx_status, actual)
 
         for task_id in (no_tx, planning, ready, old_attempt, no_event):
-            assert task_status(rec, task_id) == "failed", task_id
+            assert task_status(rec, task_id) == "pending", task_id
+            failure_class, retry_after = task_retry(rec, task_id)
+            assert failure_class == "interrupted" and retry_after, (task_id, failure_class, retry_after)
+
+        expected_classes = {
+            "committed": None, "already": None, "rolled_back": "code_defect",
+            "baseline": "environment", "engine_error": "contract",
+            "rollback_failed": "integrity",
+        }
+        for name, failure_class in expected_classes.items():
+            assert task_retry(rec, cases[name][0]) == (failure_class, None), name
 
         by_task = {t["task_id"]: t for t in result["tasks"]}
         assert by_task[cases["started"][0]]["mutation_status"] == "INTERRUPTED_NOT_APPLIED"
-        assert by_task[cases["started"][0]]["reason"] == "interrupted"
-        assert by_task[no_tx]["reason"] == "interrupted"
+        assert by_task[cases["started"][0]]["reason"] == "interrupted; retry scheduled"
+        assert by_task[no_tx]["failure_class"] == "interrupted"
         assert by_task[old_attempt]["transaction_id"] is None, "an older attempt's commit must not complete the task"
 
-    print("PASS task outcomes: committed->completed, rolled back->failed, "
-          "interrupted->failed, other endings->blocked")
+    print("PASS task outcomes: committed->completed, rolled back->failed (code_defect), "
+          "interrupted->pending with backoff, other endings->blocked by class")
 
 
 def test_terminal_and_pending_tasks_are_untouched():
@@ -137,7 +154,8 @@ def test_recovery_events_carry_run_and_attempt():
         assert ev["run_id"] == "run-xyz"
         assert ev["attempt"] == 2
         meta = json.loads(ev["metadata"])
-        assert meta["previous_status"] == "running" and meta["status"] == "failed", meta
+        assert meta["previous_status"] == "running" and meta["status"] == "pending", meta
+        assert meta["failure_class"] == "interrupted" and meta["retry_after"], meta
 
         log = (Path(tmp) / "logs" / "recovery.jsonl").read_text(encoding="utf-8")
         assert '"event": "RECOVERY_TASK"' in log

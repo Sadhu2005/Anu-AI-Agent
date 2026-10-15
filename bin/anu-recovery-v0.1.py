@@ -6,7 +6,9 @@ Reconciles work interrupted by a crash, kill, timeout, or reboot:
 - every mutation transaction still ``STARTED`` is resolved from its
   checkpoint manifest to ``INTERRUPTED_NOT_APPLIED``,
   ``INTERRUPTED_ROLLED_BACK``, or ``INTERRUPTED_CONFLICT``;
-- every task left in an in-flight status is resolved from its transaction.
+- every task left in an in-flight status is resolved from its transaction;
+  cleanly interrupted work returns to ``pending`` with a backoff until
+  ``MAX_ATTEMPTS`` is used, then it is ``blocked``.
 
 An interrupted change is rolled back, never committed (ADR-013). Recovery
 runs only while it holds the execution lock exclusively; a Task Engine or
@@ -21,7 +23,7 @@ import os
 import sqlite3
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -37,6 +39,21 @@ IN_FLIGHT = ("planning", "ready", "running", "verifying")
 NOT_APPLIED = "INTERRUPTED_NOT_APPLIED"
 ROLLED_BACK = "INTERRUPTED_ROLLED_BACK"
 CONFLICT = "INTERRUPTED_CONFLICT"
+
+MAX_ATTEMPTS = 3
+RETRY_BACKOFF = (timedelta(minutes=2), timedelta(minutes=10))
+
+# Mutation endings that block a task, by failure class (V0.6.0 section 3.4).
+# Must match FAILURE_CLASSES in the Task Engine.
+FAILURE_CLASSES = {
+    "ROLLED_BACK": "code_defect",
+    "ABORTED_BASELINE_FAILURE": "environment",
+    "MUTATION_ENGINE_ERROR": "contract",
+    "ROLLBACK_VERIFICATION_FAILED": "integrity",
+    CONFLICT: "integrity",
+}
+
+TASK_RETRY_COLUMNS = ("failure_class", "retry_after")
 
 
 class Conflict(Exception):
@@ -293,14 +310,38 @@ def reconcile_transactions(db):
     return [reconcile_transaction(db, row) for row in rows]
 
 
-def task_outcome(mutation_status):
+def ensure_task_columns(db):
+    present = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
+    for column in TASK_RETRY_COLUMNS:
+        if column not in present:
+            try:
+                db.execute(f"ALTER TABLE tasks ADD COLUMN {column} TEXT")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc):
+                    raise
+
+
+def retry_backoff(attempts):
+    index = min(max(int(attempts or 0), 1), len(RETRY_BACKOFF)) - 1
+    return RETRY_BACKOFF[index]
+
+
+def task_outcome(mutation_status, attempts, now=None):
+    """Return ``(status, failure_class, retry_after, reason)`` for a task."""
     if mutation_status in ("COMMITTED", "ALREADY_COMMITTED"):
-        return "completed", "change was committed before the process stopped"
+        return "completed", None, None, "change was committed before the process stopped"
     if mutation_status == "ROLLED_BACK":
-        return "failed", "test failed and was rolled back before the process stopped"
+        return ("failed", FAILURE_CLASSES["ROLLED_BACK"], None,
+                "test failed and was rolled back before the process stopped")
     if mutation_status in (None, NOT_APPLIED, ROLLED_BACK):
-        return "failed", "interrupted"
-    return "blocked", f"mutation ended {mutation_status}"
+        if int(attempts or 0) >= MAX_ATTEMPTS:
+            return ("blocked", "interrupted", None,
+                    f"interrupted; all {MAX_ATTEMPTS} attempts used")
+        now = now or datetime.now(timezone.utc)
+        return ("pending", "interrupted", (now + retry_backoff(attempts)).isoformat(),
+                "interrupted; retry scheduled")
+    return ("blocked", FAILURE_CLASSES.get(mutation_status, "integrity"), None,
+            f"mutation ended {mutation_status}")
 
 
 def reconcile_task(db, task):
@@ -322,17 +363,23 @@ def reconcile_task(db, task):
         ).fetchone()
 
     mutation_status = tx["status"] if tx else None
-    new_status, reason = task_outcome(mutation_status)
+    new_status, failure_class, retry_after, reason = task_outcome(
+        mutation_status, task["attempts"]
+    )
 
     db.execute(
-        "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
-        (new_status, now_iso(), task_id),
+        """UPDATE tasks SET status = ?, failure_class = ?, retry_after = ?,
+                            updated_at = ?
+           WHERE id = ?""",
+        (new_status, failure_class, retry_after, now_iso(), task_id),
     )
 
     result = {
         "task_id": task_id,
         "previous_status": task["status"],
         "status": new_status,
+        "failure_class": failure_class,
+        "retry_after": retry_after,
         "reason": reason,
         "transaction_id": tx["transaction_id"] if tx else None,
         "mutation_status": mutation_status,
@@ -370,6 +417,7 @@ def recover(db_path=None, lock_path=None):
 
         with sqlite3.connect(str(db_path or DB_FILE)) as db:
             db.row_factory = sqlite3.Row
+            ensure_task_columns(db)
             transactions = reconcile_transactions(db)
             tasks = reconcile_tasks(db)
             db.commit()

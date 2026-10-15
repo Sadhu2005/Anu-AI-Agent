@@ -14,6 +14,8 @@ Safety model:
 """
 
 import argparse
+import contextlib
+import fcntl
 import importlib.util
 import json
 import os
@@ -28,12 +30,20 @@ BASE = Path("/srv/anu")
 DB_FILE = BASE / "brain" / "anu-brain.db"
 SAFE_MUTATION = BASE / "bin" / "anu-safe-mutation-v0.2.py"
 TASK_GRAPH = BASE / "bin" / "anu-task-graph-v0.1.py"
+RECOVERY = BASE / "bin" / "anu-recovery-v0.1.py"
 LOG_FILE = BASE / "logs" / "anu-task-engine.jsonl"
+EXECUTION_LOCK_FILE = BASE / "runtime" / "anu-execution.lock"
 
 TERMINAL = {"completed", "blocked"}
 RETRYABLE = {"failed"}
 RUNNABLE = {"pending", "ready"}
+IN_FLIGHT = {"planning", "ready", "running", "verifying"}
 MAX_ATTEMPTS = 3
+
+LOST_MUTATION_REASONS = {
+    "mutation_engine_timeout",
+    "invalid_mutation_engine_response",
+}
 
 
 def now_iso():
@@ -281,7 +291,92 @@ def classify_mutation(result, process_code):
     return "blocked"
 
 
+@contextlib.contextmanager
+def shared_execution_lock():
+    """Held while a task executes so recovery never treats it as orphaned."""
+    EXECUTION_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(EXECUTION_LOCK_FILE, os.O_RDONLY | os.O_CREAT, 0o644)
+    try:
+        try:
+            # Root-run tests and the anu-agent service share this file.
+            os.fchmod(fd, 0o644)
+        except PermissionError:
+            pass
+        fcntl.flock(fd, fcntl.LOCK_SH)
+        yield
+    finally:
+        os.close(fd)
+
+
+def _load_recovery():
+    spec = importlib.util.spec_from_file_location(
+        "anu_recovery_v0_1_engine",
+        RECOVERY,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Recovery module could not be loaded: {RECOVERY}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _recover_lost_mutation(task_id, attempt, run_id, result, code):
+    """Reconcile a Safe Mutation that died without reporting an outcome."""
+    try:
+        summary = _load_recovery().recover(
+            db_path=str(DB_FILE),
+            lock_path=str(EXECUTION_LOCK_FILE),
+        )
+    except Exception as exc:
+        summary = {
+            "status": "RECOVERY_ERROR",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    task = fetch_task(task_id)
+
+    if task["status"] in IN_FLIGHT:
+        # Recovery could not run, e.g. another execution holds the lock.
+        # The STARTED transaction stays for startup recovery.
+        update_task(task_id, status="blocked")
+        event(
+            task_id,
+            "TASK_BLOCKED",
+            "Safe Mutation lost and recovery could not run",
+            {
+                "attempt": attempt,
+                "run_id": run_id,
+                "reason": result.get("reason"),
+                "recovery": summary,
+            },
+        )
+        task = fetch_task(task_id)
+
+    return (
+        {
+            **result,
+            "task_status": task["status"],
+            "retryable": task["status"] == "failed" and attempt < MAX_ATTEMPTS,
+            "recovery": summary,
+        },
+        code,
+    )
+
+
 def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_id=None):
+    with shared_execution_lock():
+        result, code = _run_mutation_locked(
+            task_id, project, changes_file, operation, attempt, run_id
+        )
+
+    # Recovery needs the execution lock exclusively, so it runs after release.
+    if result.get("reason") in LOST_MUTATION_REASONS:
+        return _recover_lost_mutation(task_id, attempt, run_id, result, code)
+
+    return result, code
+
+
+def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run_id=None):
     update_task(task_id, status="planning", attempts=attempt)
     event(
         task_id,
@@ -343,10 +438,9 @@ def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_i
             env=child_env,
         )
     except subprocess.TimeoutExpired as exc:
-        update_task(task_id, status="blocked")
         event(
             task_id,
-            "TASK_BLOCKED",
+            "TASK_MUTATION_LOST",
             "Safe Mutation Engine timed out",
             {
                 "attempt": attempt,
@@ -364,7 +458,7 @@ def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_i
             {
                 "ok": False,
                 "task_id": task_id,
-                "task_status": "blocked",
+                "task_status": "running",
                 "attempt": attempt,
                 "run_id": run_id,
                 "retryable": False,
@@ -376,10 +470,9 @@ def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_i
     result = parse_json_output(process.stdout)
 
     if result is None:
-        update_task(task_id, status="blocked")
         event(
             task_id,
-            "TASK_BLOCKED",
+            "TASK_MUTATION_LOST",
             "Invalid Safe Mutation response",
             {
                 "attempt": attempt,
@@ -393,7 +486,7 @@ def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_i
             {
                 "ok": False,
                 "task_id": task_id,
-                "task_status": "blocked",
+                "task_status": "running",
                 "attempt": attempt,
                 "run_id": run_id,
                 "retryable": False,

@@ -49,6 +49,7 @@ CHILD = textwrap.dedent(
     rt.LOG_FILE = tmp / "anu.log"
     rt.STATE_FILE = tmp / "anu-state.json"
     rt.INTERVAL_SECONDS = 1
+    rt.recovery_done = True
     rt.run_resource_guardian = lambda: {
         "status": "NORMAL",
         "temperature_c": 40.0,
@@ -157,6 +158,7 @@ def test_iteration_runs_scheduler_when_not_stopping():
             return []
 
     runtime._load_scheduler = lambda: FakeScheduler()
+    runtime.recovery_done = True
 
     assert runtime.running is True
     assert runtime.run_runtime_iteration() == []

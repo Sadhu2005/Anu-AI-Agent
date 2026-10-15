@@ -339,6 +339,16 @@ baseline → checkpoint → mutation → test → commit OR rollback
 - **`ALREADY_COMMITTED`:** a new status, meaning that a run whose key is
   already committed touched nothing. `details.committed_transaction_id`
   names the original transaction, and the Task Engine completes the task.
+- **Recovery statuses** (`anu-recovery-v0.1.py`), for a `STARTED` row whose
+  process died. Evidence is kept in `details.recovery`.
+  - `INTERRUPTED_NOT_APPLIED`: no file was changed.
+  - `INTERRUPTED_ROLLED_BACK`: the applied change was restored from the
+    checkpoint, and `integrity_verified` is 1.
+  - `INTERRUPTED_CONFLICT`: the files matched neither the baseline nor the
+    applied change, or the evidence was missing or corrupt. Nothing was
+    touched.
+- **New event types:** `RECOVERY_TRANSACTION`, `RECOVERY_TASK`, and
+  `TASK_MUTATION_LOST` (Safe Mutation timed out or died without output).
 
 ---
 

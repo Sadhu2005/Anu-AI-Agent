@@ -13,8 +13,10 @@ BASE = Path("/srv/anu")
 
 GUARDIAN = BASE / "bin" / "anu-resource-guardian.py"
 SCHEDULER = BASE / "bin" / "anu-task-scheduler-v0.1.py"
+RECOVERY = BASE / "bin" / "anu-recovery-v0.1.py"
 DB_FILE = BASE / "brain" / "anu-brain.db"
 SCHEDULER_LOCK_FILE = BASE / "runtime" / "anu-scheduler.lock"
+EXECUTION_LOCK_FILE = BASE / "runtime" / "anu-execution.lock"
 
 LOG_FILE = BASE / "logs" / "anu.log"
 STATE_FILE = BASE / "runtime" / "anu-state.json"
@@ -23,6 +25,7 @@ INTERVAL_SECONDS = 60
 SCHEDULER_MAX_TASKS = 1
 
 running = True
+recovery_done = False
 
 
 def now():
@@ -66,6 +69,69 @@ def _load_scheduler():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_recovery():
+    spec = importlib.util.spec_from_file_location(
+        "anu_recovery_v0_1_runtime",
+        RECOVERY,
+    )
+
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Unable to load recovery module: {RECOVERY}"
+        )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_startup_recovery():
+    global recovery_done
+
+    try:
+        result = _load_recovery().recover(
+            db_path=str(DB_FILE),
+            lock_path=str(EXECUTION_LOCK_FILE),
+        )
+    except Exception as exc:
+        write_log(
+            "Recovery failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return None
+
+    status = result.get("status", "UNKNOWN")
+
+    if status == "DEFERRED_ACTIVE_EXECUTION":
+        write_log(
+            "Recovery deferred: execution in progress"
+        )
+        return result
+
+    recovery_done = True
+
+    write_log(
+        f"Recovery {status}: "
+        f"transactions={len(result.get('transactions', []))} "
+        f"tasks={len(result.get('tasks', []))}"
+    )
+
+    for item in result.get("transactions", []):
+        write_log(
+            f"Recovery transaction {item.get('transaction_id')}: "
+            f"{item.get('status')} ({item.get('reason')})"
+        )
+
+    for item in result.get("tasks", []):
+        write_log(
+            f"Recovery task {item.get('task_id')}: "
+            f"{item.get('previous_status')} -> {item.get('status')} "
+            f"({item.get('reason')})"
+        )
+
+    return result
 
 
 def scheduler_execution_allowed(guardian_data):
@@ -212,6 +278,15 @@ def run_runtime_iteration():
         return {
             "status": "SKIPPED_STOPPING",
         }
+
+    # Interrupted work is reconciled before any new work is scheduled.
+    if not recovery_done:
+        run_startup_recovery()
+
+        if not recovery_done:
+            return {
+                "status": "SKIPPED_RECOVERY_PENDING",
+            }
 
     return run_agent_scheduler_cycle(data)
 

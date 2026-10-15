@@ -33,6 +33,7 @@ def load_safe_mutation(root):
     module.LOG_FILE = root / "logs" / "anu-mutations.jsonl"
     module.CHECKPOINT_ROOT = root / "checkpoints"
     module.WORKSPACE = root / "projects"
+    module.EXECUTION_LOCK_FILE = root / "execution.lock"
 
     with sqlite3.connect(module.DB_FILE) as db:
         db.executescript(SCHEMA.read_text(encoding="utf-8"))

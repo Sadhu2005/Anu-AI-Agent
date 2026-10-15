@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -19,6 +21,7 @@ DB_FILE = BASE / 'brain' / 'anu-brain.db'
 LOG_FILE = BASE / 'logs' / 'anu-mutations.jsonl'
 CHECKPOINT_ROOT = BASE / 'checkpoints' / 'mutations'
 WORKSPACE = BASE / 'workspace' / 'projects'
+EXECUTION_LOCK_FILE = BASE / 'runtime' / 'anu-execution.lock'
 
 
 def now_iso():
@@ -27,6 +30,23 @@ def now_iso():
 
 def utc_stamp():
     return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+
+
+@contextlib.contextmanager
+def shared_execution_lock():
+    """Held for the whole transaction so recovery never treats it as orphaned."""
+    EXECUTION_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(EXECUTION_LOCK_FILE, os.O_RDONLY | os.O_CREAT, 0o644)
+    try:
+        try:
+            # Root-run tests and the anu-agent service share this file.
+            os.fchmod(fd, 0o644)
+        except PermissionError:
+            pass
+        fcntl.flock(fd, fcntl.LOCK_SH)
+        yield
+    finally:
+        os.close(fd)
 
 
 def fail(message, code=1):
@@ -453,6 +473,11 @@ def rollback_files(files, project):
 
 
 def main():
+    with shared_execution_lock():
+        return run_transaction()
+
+
+def run_transaction():
     parser = argparse.ArgumentParser(description='ANU Safe Mutation Engine v0.2')
     parser.add_argument('--project', required=True)
     parser.add_argument('--changes-file', required=True,

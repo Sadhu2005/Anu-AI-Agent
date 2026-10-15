@@ -1,6 +1,7 @@
 [Unit]
 Description=ANU Autonomous Development Agent Runtime
-After=local-fs.target
+After=local-fs.target anu-sandbox.service
+Wants=anu-sandbox.service
 Requires=anu-agent.slice
 ConditionPathExists=/srv/anu/config/anu-policy.yaml
 ConditionPathExists=/srv/anu/bin/anu-runtime.py
@@ -17,6 +18,12 @@ ExecStart=/usr/bin/python3 /srv/anu/bin/anu-runtime.py
 
 Restart=on-failure
 RestartSec=10
+
+# SIGTERM reaches only the runtime, which finishes the cycle in flight;
+# a Safe Mutation child must not be killed mid-transaction. The stop
+# timeout must exceed the Task Engine's 300 s Safe Mutation timeout.
+KillMode=mixed
+TimeoutStopSec=420
 
 Slice=anu-agent.slice
 

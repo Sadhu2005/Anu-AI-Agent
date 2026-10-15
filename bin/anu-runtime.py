@@ -159,6 +159,63 @@ def run_resource_guardian():
         return None
 
 
+def run_runtime_iteration():
+    data = run_resource_guardian()
+
+    if not data:
+        write_log(
+            "Health check unavailable."
+        )
+        return None
+
+    status = data.get(
+        "status",
+        "UNKNOWN",
+    )
+
+    temperature = data.get(
+        "temperature_c"
+    )
+
+    memory = data.get(
+        "memory",
+        {}
+    )
+
+    write_log(
+        "Health check: "
+        f"status={status} "
+        f"temp={temperature}C "
+        f"memory_available="
+        f"{memory.get('available_mb')}MB"
+    )
+
+    save_state({
+        "agent": "ANU",
+        "status": status,
+        "last_health_check": now(),
+        "temperature_c": temperature,
+        "memory": memory,
+        "cpu_percent": data.get(
+            "cpu_percent"
+        ),
+        "disk": data.get(
+            "disk"
+        ),
+    })
+
+    # A stop requested during the health check must not start new work.
+    if not running:
+        write_log(
+            "Scheduler skipped: stop requested"
+        )
+        return {
+            "status": "SKIPPED_STOPPING",
+        }
+
+    return run_agent_scheduler_cycle(data)
+
+
 def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
@@ -173,52 +230,7 @@ def main():
 
     while running:
 
-        data = run_resource_guardian()
-
-        if data:
-
-            status = data.get(
-                "status",
-                "UNKNOWN",
-            )
-
-            temperature = data.get(
-                "temperature_c"
-            )
-
-            memory = data.get(
-                "memory",
-                {}
-            )
-
-            write_log(
-                "Health check: "
-                f"status={status} "
-                f"temp={temperature}C "
-                f"memory_available="
-                f"{memory.get('available_mb')}MB"
-            )
-
-            save_state({
-                "agent": "ANU",
-                "status": status,
-                "last_health_check": now(),
-                "temperature_c": temperature,
-                "memory": memory,
-                "cpu_percent": data.get(
-                    "cpu_percent"
-                ),
-                "disk": data.get(
-                    "disk"
-                ),
-            })
-
-            run_agent_scheduler_cycle(data)
-
-        else:
-            write_log(
-                "Health check unavailable."
-            )
+        run_runtime_iteration()
 
         # Sleep in small chunks so SIGTERM is handled quickly.
         for _ in range(INTERVAL_SECONDS):

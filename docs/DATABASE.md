@@ -325,6 +325,21 @@ gateway results (JSON) for the baseline, mutation, and rollback tests.
 baseline → checkpoint → mutation → test → commit OR rollback
 ```
 
+**From V0.6.0** ([`migrations/0002_v0_6_0.sql`](../migrations/0002_v0_6_0.sql)):
+
+- **Write-ahead.** The row is inserted with status `STARTED` before the
+  baseline test, and updated in place when the transaction ends. A
+  `STARTED` row with no running Safe Mutation is an interrupted
+  transaction. If the row cannot be written, no file is touched.
+- **`idempotency_key`:** `sha256` of the task ID, project, operation, and the
+  ordered `{file, old, new}` changes. It is `NULL` when Safe Mutation runs
+  without a task.
+- **`idx_mutation_transactions_committed_key`:** a partial unique index that
+  allows at most one `COMMITTED` row per key.
+- **`ALREADY_COMMITTED`:** a new status, meaning that a run whose key is
+  already committed touched nothing. `details.committed_transaction_id`
+  names the original transaction, and the Task Engine completes the task.
+
 ---
 
 ## 13. Checkpoints

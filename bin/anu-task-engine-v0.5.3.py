@@ -272,7 +272,7 @@ def parse_json_output(stdout):
 def classify_mutation(result, process_code):
     status = (result or {}).get("status")
 
-    if process_code == 0 and status == "COMMITTED":
+    if process_code == 0 and status in {"COMMITTED", "ALREADY_COMMITTED"}:
         return "completed"
 
     if status == "ROLLED_BACK":

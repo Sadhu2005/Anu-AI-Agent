@@ -196,11 +196,49 @@ def ensure_state():
         ensure_column(db, 'mutation_transactions', 'rollback_sha256', 'TEXT')
         ensure_column(db, 'mutation_transactions', 'integrity_verified', 'INTEGER')
         ensure_column(db, 'mutation_transactions', 'completed_at', 'TEXT')
+        ensure_column(db, 'mutation_transactions', 'idempotency_key', 'TEXT')
         db.execute(
             'CREATE UNIQUE INDEX IF NOT EXISTS idx_mutation_transactions_transaction_id '
             'ON mutation_transactions(transaction_id)'
         )
+        db.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_mutation_transactions_committed_key '
+            'ON mutation_transactions(idempotency_key) '
+            "WHERE status = 'COMMITTED' AND idempotency_key IS NOT NULL"
+        )
         db.commit()
+
+
+def idempotency_key(task_id, project_name, operation, changes):
+    # Without a task there is no unit of work to deduplicate.
+    if task_id is None:
+        return None
+    payload = {
+        'task_id': task_id,
+        'project': project_name,
+        'operation': operation,
+        'changes': [
+            {'file': c['file'], 'old': c['old'], 'new': c['new']}
+            for c in changes
+        ],
+    }
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False
+    ).encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def find_committed_transaction(key):
+    if key is None:
+        return None
+    with sqlite3.connect(DB_FILE) as db:
+        row = db.execute(
+            """SELECT transaction_id FROM mutation_transactions
+               WHERE idempotency_key = ? AND status = 'COMMITTED'
+               ORDER BY id LIMIT 1""",
+            (key,),
+        ).fetchone()
+    return row[0] if row else None
 
 
 def checkpoint_event(transaction_id, task_id, phase, state, metadata):
@@ -237,40 +275,67 @@ def checkpoint_event(transaction_id, task_id, phase, state, metadata):
         )
         db.commit()
 
+TX_COLUMNS = (
+    'project', 'file_path', 'operation', 'status', 'baseline_ok',
+    'mutation_test_ok', 'rollback_attempted', 'rollback_verified',
+    'checkpoint_path', 'details', 'created_at', 'transaction_id',
+    'task_id', 'files_changed', 'baseline_sha256', 'rollback_sha256',
+    'integrity_verified', 'completed_at', 'idempotency_key',
+)
+
+
+def tx_values(tx):
+    return (
+        tx["project"],
+        tx["primary_file"],
+        tx["operation"],
+        tx["status"],
+        int(tx["baseline_ok"]),
+        int(tx["mutation_test_ok"]),
+        int(tx["rollback_attempted"]),
+        int(tx["rollback_verified"]),
+        tx["checkpoint_path"],
+        json.dumps(tx["details"], sort_keys=True),
+        tx["created_at"],
+        tx["transaction_id"],
+        tx.get("task_id"),
+        len(tx["files"]),
+        tx["baseline_sha256"],
+        tx.get("rollback_sha256"),
+        int(tx["integrity_verified"]),
+        tx.get("completed_at"),
+        tx.get("idempotency_key"),
+    )
+
+
+def insert_transaction(db, tx):
+    db.execute(
+        f"""INSERT INTO mutation_transactions ({', '.join(TX_COLUMNS)})
+            VALUES ({', '.join('?' for _ in TX_COLUMNS)})""",
+        tx_values(tx),
+    )
+
+
+def record_started(tx):
+    """Write-ahead record: every transaction is visible before any file changes."""
+    with sqlite3.connect(DB_FILE) as db:
+        insert_transaction(db, tx)
+        db.commit()
+
+
 def persist(tx):
     with LOG_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(tx, sort_keys=True) + "\n")
 
     with sqlite3.connect(DB_FILE) as db:
-        db.execute(
-            """INSERT INTO mutation_transactions
-               (project, file_path, operation, status, baseline_ok,
-                mutation_test_ok, rollback_attempted, rollback_verified,
-                checkpoint_path, details, created_at, transaction_id,
-                task_id, files_changed, baseline_sha256, rollback_sha256,
-                integrity_verified, completed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                tx["project"],
-                tx["primary_file"],
-                tx["operation"],
-                tx["status"],
-                int(tx["baseline_ok"]),
-                int(tx["mutation_test_ok"]),
-                int(tx["rollback_attempted"]),
-                int(tx["rollback_verified"]),
-                tx["checkpoint_path"],
-                json.dumps(tx["details"], sort_keys=True),
-                tx["created_at"],
-                tx["transaction_id"],
-                tx.get("task_id"),
-                len(tx["files"]),
-                tx["baseline_sha256"],
-                tx.get("rollback_sha256"),
-                int(tx["integrity_verified"]),
-                tx.get("completed_at"),
-            ),
+        updated = db.execute(
+            f"""UPDATE mutation_transactions
+                SET {', '.join(f'{c} = ?' for c in TX_COLUMNS)}
+                WHERE transaction_id = ?""",
+            (*tx_values(tx), tx["transaction_id"]),
         )
+        if updated.rowcount == 0:
+            insert_transaction(db, tx)
 
         context_task_id, goal_id, parent_task_id, run_id, attempt = execution_context()
         task_id = (
@@ -422,9 +487,22 @@ def main():
         'rollback_sha256': None,
         'checkpoint_path': None,
         'details': {},
+        'idempotency_key': idempotency_key(
+            args.task_id, args.project, args.operation, changes
+        ),
     }
 
+    # Outside the try: without a write-ahead record no file may be touched.
+    record_started(tx)
+
     try:
+        committed = find_committed_transaction(tx['idempotency_key'])
+        if committed:
+            tx['status'] = 'ALREADY_COMMITTED'
+            tx['integrity_verified'] = True
+            tx['details']['committed_transaction_id'] = committed
+            return finalize(tx, 0)
+
         baseline = run_gateway(args.project, args.operation, args.task_id)
         tx['details']['baseline'] = baseline
         tx['baseline_ok'] = gateway_ok(baseline)
@@ -511,8 +589,9 @@ def finalize(tx, code):
     tx['completed_at'] = now_iso()
     persist(tx)
     print(json.dumps({
-        'ok': tx['status'] in {'COMMITTED', 'ROLLED_BACK'},
+        'ok': tx['status'] in {'COMMITTED', 'ALREADY_COMMITTED', 'ROLLED_BACK'},
         'transaction_id': tx['transaction_id'],
+        'idempotency_key': tx.get('idempotency_key'),
         'project': tx['project'],
         'files': [f['path'] for f in tx['files']],
         'status': tx['status'],

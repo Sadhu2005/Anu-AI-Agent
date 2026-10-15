@@ -442,7 +442,14 @@ Then **FROZEN** means:
 
 ## 25. Adopting This Workflow (One-time)
 
-The Pi has, so far, been developed in place. To switch over:
+**Steps 1–4 done on 5 Oct 2026 04:31 UTC.** `/srv/anu/.git` is root-owned,
+`origin` is GitHub, and the Pi runs detached at tag `v0.5.9` (`73967ee`) with
+a clean tracked working tree. Before checkout, every file the tag would write
+was checked to equal either the tag or the last Pi commit. There were no
+conflicts, so nothing was stashed. Backup of the previous `.git`:
+`/var/backups/anu-workflow-20261005T043055Z/`. Steps 5–7 remain.
+
+The Pi had, until then, been developed in place. To switch over:
 
 1. **Make the Pi repository root-owned.** Today `/srv/anu/.git` belongs to
    `anu-agent` while every file in `bin/` and `config/` belongs to root. That

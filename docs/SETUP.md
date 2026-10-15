@@ -265,10 +265,9 @@ Until a bootstrap exists, choose one:
 
 - **Restore** a backup of `anu-brain.db` from the old Pi (made with the SQLite
   backup API; see [OPERATIONS.md](OPERATIONS.md)), or
-- **Recreate from a captured schema**: on the old Pi run
-  `sudo -u anu-agent sqlite3 -readonly /srv/anu/brain/anu-brain.db .schema > /tmp/anu-schema.sql`,
-  commit it as `migrations/0001_initial.sql` ([DATABASE.md](DATABASE.md)
-  sections 43 and 48), and on the new Pi:
+- **Recreate from the captured schema**: `migrations/0001_initial.sql`
+  (captured 15 Oct 2026; [DATABASE.md](DATABASE.md) sections 43 and 48).
+  On the new Pi:
 
 ```bash
 sudo -u anu-agent sqlite3 /srv/anu/brain/anu-brain.db < /srv/anu/migrations/0001_initial.sql
@@ -442,7 +441,7 @@ time on limited hardware**.
 | 8 | Checkpoint path in policy | **Resolved** in `anu-policy.yaml` |
 | 9 | Docker capability wording | **Resolved** in config comment and docs |
 | 10 | Canonical repository | **Resolved:** `github.com/Sadhu2005/Anu-AI-Agent` |
-| 11 | Brain schema bootstrap | **Open:** capture `migrations/0001_initial.sql` and add a migration runner ([DATABASE.md](DATABASE.md) section 43) |
+| 11 | Brain schema bootstrap | Baseline captured in `migrations/0001_initial.sql`. **Open:** a migration runner ([DATABASE.md](DATABASE.md) section 43) |
 | 12 | Hard-coded uid 999 / gid 984 | **Open:** move to configuration |
 | 13 | Hard-coded `/srv/anu` paths | **Open:** blocks testing anywhere else |
 | 14 | `sandbox-test-project` contents | **Open:** not in git; add as a fixture |

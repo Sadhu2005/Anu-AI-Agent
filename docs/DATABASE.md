@@ -380,7 +380,8 @@ rollback restored the original checksum
 ```
 
 Not yet written by any code. Becomes central in [V0.6.3](versions/v0.6.3.md).
-Exact columns to be captured from the live database (section 48).
+Columns: `id`, `task_id` (FK `tasks`), `observation_type` (not null),
+`content` (not null), `created_at`.
 
 ---
 
@@ -394,7 +395,8 @@ agent_events   TASK_FAILED              (that it happened)
 errors         detailed failure record  (what exactly went wrong)
 ```
 
-Not yet written by any code. Exact columns to be captured.
+Not yet written by any code. Columns: `id`, `task_id` (FK `tasks`),
+`error_type`, `message`, `resolution`, `created_at`.
 
 ---
 
@@ -428,6 +430,11 @@ one specific authorization event, not a permanent privilege**, and never a
 mechanism for granting permissions automatically. Becomes active in
 [V0.6.7](versions/v0.6.7.md).
 
+Columns: `id`, `task_id` (no foreign key), `action` (not null),
+`requested_at`, `approved_at`, `status` (default `'pending'`). There is no
+column for who approved or for a denial reason. V0.6.7 must add them in a
+migration.
+
 ---
 
 ## 19. Research
@@ -439,7 +446,8 @@ events:
 goal → research task → sources / findings → observation → decision
 ```
 
-Exact columns to be captured.
+Columns: `id`, `task_id` (FK `tasks`), `url`, `title`, `summary`,
+`created_at`.
 
 ---
 
@@ -447,7 +455,7 @@ Exact columns to be captured.
 
 Durable metadata **about** the agent: identity, runtime information,
 version, configuration state. Events describe what the agent **did**.
-Exact columns to be captured.
+Columns: `key` (primary key), `value` (not null), a plain key/value store.
 
 ---
 
@@ -470,7 +478,8 @@ Connects ANU work to version-control history, giving an eventual trace:
 goal → task → mutation → tests → git commit
 ```
 
-Exact columns to be captured.
+Columns: `id`, `task_id` (FK `tasks`), `commit_hash`, `branch`, `message`,
+`created_at`.
 
 ---
 
@@ -481,7 +490,8 @@ project → commit(s) → pull request → review / merge
 ```
 
 Important once ANU moves from sandbox projects to real development
-workflows. Exact columns to be captured.
+workflows. Columns: `id`, `project_id` (FK `projects`), `pr_number`, `url`,
+`status`, `created_at`.
 
 ---
 
@@ -905,17 +915,19 @@ The Brain exists to make that chain persistent.
 
 | Status | Tables |
 |---|---|
-| **Full DDL verified** | `goals`, `tasks`, `task_dependencies`, `task_execution_specs`, `checkpoints`, `mutation_transactions` |
-| **Columns verified** (inspection or code write contract) | `agent_events`, `actions`, `projects`, `test_results`, `resource_usage` |
-| **Present, columns not yet captured** | `agent_metadata`, `approvals`, `errors`, `observations`, `pull_requests`, `research`, `commits` |
+| **Full DDL verified** (all 18 tables, 5 indexes) | Captured read-only from the live Brain on 15 Oct 2026: [`migrations/0001_initial.sql`](../migrations/0001_initial.sql) |
 | **Planned** | `model_requests` (V0.6.1) |
 
 **Do not invent missing columns to make the documentation look complete.**
 
-### Capturing the baseline
+Not yet captured: `PRAGMA journal_mode`, `pragma_foreign_key_list`, and
+`PRAGMA foreign_key_check` output. Capture them with the commands below
+at the next schema freeze. There is no migration runner yet
+([SETUP.md](SETUP.md)).
 
-Run on the Pi. It writes a file that can be copied to the workspace as
-`migrations/0001_initial.sql`:
+### Re-capturing the baseline
+
+Run on the Pi:
 
 ```bash
 sudo -u anu-agent sqlite3 -readonly /srv/anu/brain/anu-brain.db .schema > /tmp/anu-schema.sql

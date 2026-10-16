@@ -59,6 +59,7 @@ columns:
 | `agent_events` attribution columns | Brain Schema v0.2 migration, 3 Oct 2026, run manually; script not in git (backup `anu-brain.db.backup-v0.2-20261003T080022Z`) |
 | `task_dependencies` + indexes | `anu-task-graph-v0.1.py` (V0.5.3) |
 | `task_execution_specs` | `anu-task-execution-spec-v0.1.py` (V0.5.4) |
+| `goal_plans` | `migrations/0003_v0_6_1.sql`, `anu-goal-plan-service-v0.1.py` (V0.6.1) |
 
 ---
 
@@ -104,6 +105,27 @@ higher-level objective that tasks belong to, e.g. *"Improve the portfolio
 application's test reliability."* `tasks.goal_id` links work back to it.
 
 Goals become the top-level unit of work in [V0.6.1](versions/v0.6.1.md).
+
+### Goal plans (V0.6.1)
+
+```sql
+CREATE TABLE goal_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_id INTEGER NOT NULL,
+    plan_id TEXT NOT NULL UNIQUE,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    body_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(goal_id, version),
+    FOREIGN KEY(goal_id) REFERENCES goals(id)
+);
+```
+
+Index on `(goal_id, status)`. Created by `migrations/0003_v0_6_1.sql` and
+`anu-goal-plan-service-v0.1.py migrate()`. `body_json` is a serialized
+`AgentPlan`. Statuses: `active`, `superseded`, `abandoned`. Saving a new
+active plan supersedes the previous active version for that goal.
 
 ---
 

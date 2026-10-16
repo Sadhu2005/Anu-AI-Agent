@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.6.0] — 2026-10-16 · freeze pending tag `v0.6.0`
+## [V0.6.0] — 2026-10-16 · tag `v0.6.0`
 
 Reliable autonomous execution: crash, kill, and reboot mid-mutation no
 longer leave a project half-changed.

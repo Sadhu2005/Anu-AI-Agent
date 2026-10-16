@@ -53,7 +53,7 @@ the next version.
 | [V0.5.7](versions/v0.5.7.md) | Real WAITING lifecycle and re-wake | Frozen | branch `v0.5.7-integration` |
 | [V0.5.8](versions/v0.5.8.md) | Agent-aware scheduler lifecycle boundary | Frozen | branch `v0.5.8-integration` |
 | [V0.5.9](versions/v0.5.9.md) | Autonomous production execution | Frozen | tag `v0.5.9` |
-| [V0.6.0](versions/v0.6.0.md) | Reliable autonomous execution | Live evidence done; freeze pending | branch `v0.6.0-integration` |
+| [V0.6.0](versions/v0.6.0.md) | Reliable autonomous execution | Frozen | tag `v0.6.0`, branch `v0.6.0-integration` |
 
 ### In progress
 

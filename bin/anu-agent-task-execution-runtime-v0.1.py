@@ -10,6 +10,10 @@ ADAPTER_MODULE = (
     BASE / "bin" / "anu-agent-task-execution-adapter-v0.1.py"
 )
 
+TASK_ADAPTER_MODULE = (
+    BASE / "bin" / "anu-agent-task-adapter-v0.1.py"
+)
+
 TASK_ENGINE_MODULE = (
     BASE / "bin" / "anu-task-engine-v0.5.3.py"
 )
@@ -39,6 +43,13 @@ def _load_adapter():
     return _load_module(
         ADAPTER_MODULE,
         "anu_agent_task_execution_adapter_v0_1_runtime",
+    )
+
+
+def _load_task_adapter():
+    return _load_module(
+        TASK_ADAPTER_MODULE,
+        "anu_agent_task_adapter_v0_1_runtime",
     )
 
 
@@ -116,10 +127,16 @@ def build_production_agent_execution_handler(db):
     mutation, dependency admission, attempts, rollback, and task state.
 
     AgentController retries remain disabled.
+
+    Agent admission (V0.6.1): a pending task that cannot become an
+    AgentGoal is blocked alone (``failure_class=contract``). The WAKE
+    handler returns a structured failure instead of raising, so one bad
+    candidate cannot abort the whole scheduler cycle.
     """
     _validate_db(db)
 
     adapter = _load_adapter()
+    task_adapter = _load_task_adapter()
     engine = _load_task_engine()
     execution_spec = _load_execution_spec()
 
@@ -131,6 +148,21 @@ def build_production_agent_execution_handler(db):
     start_task = _require_callable(
         engine,
         "start_task",
+    )
+
+    update_task = _require_callable(
+        engine,
+        "update_task",
+    )
+
+    event = _require_callable(
+        engine,
+        "event",
+    )
+
+    agent_admission = _require_callable(
+        task_adapter,
+        "agent_admission",
     )
 
     fetch_execution_descriptor = _require_callable(
@@ -146,6 +178,40 @@ def build_production_agent_execution_handler(db):
 
     def handle(plan_item):
         task_id = _validate_plan_item(plan_item)
+
+        task = task_fetcher(task_id)
+        if task is None:
+            raise ValueError(f"No task for task_id={task_id}")
+
+        admission = agent_admission(task)
+        if admission.get("state") != "READY":
+            failure_class = admission.get("failure_class") or "contract"
+            reason = admission.get("reason") or (
+                "task cannot become AgentGoal"
+            )
+            update_task(
+                task_id,
+                status="blocked",
+                failure_class=failure_class,
+            )
+            event(
+                task_id,
+                "TASK_BLOCKED",
+                reason,
+                {
+                    "reason": reason,
+                    "failure_class": failure_class,
+                    "agent_admission": admission,
+                },
+            )
+            return {
+                "ok": False,
+                "task_id": task_id,
+                "task_status": "blocked",
+                "reason": reason,
+                "failure_class": failure_class,
+                "agent_admission": admission,
+            }
 
         return adapter.run_task_with_agent_execution(
             task_id=task_id,

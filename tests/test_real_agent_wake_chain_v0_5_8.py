@@ -4,7 +4,8 @@ import importlib.util
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+REPO = Path(__file__).resolve().parents[1]
+BASE = REPO
 SCHEDULER = BASE / "bin" / "anu-task-scheduler-v0.1.py"
 TASK = {
     "id": 1901,
@@ -69,6 +70,14 @@ class FakeEngine:
             0,
         )
 
+    @staticmethod
+    def update_task(*_args, **_kwargs):
+        return None
+
+    @staticmethod
+    def event(*_args, **_kwargs):
+        return None
+
 
 class FakeExecutionSpec:
     @staticmethod
@@ -92,6 +101,12 @@ def test_real_scheduler_to_agent_controller_chain():
             "anu_agent_task_execution_runtime_real_chain_v0_5_8",
         )
 
+        # Runtime modules hard-code /srv/anu; point them at this tree so
+        # staging copies and the live checkout both resolve correctly.
+        runtime.ADAPTER_MODULE = BASE / "bin" / "anu-agent-task-execution-adapter-v0.1.py"
+        runtime.TASK_ADAPTER_MODULE = BASE / "bin" / "anu-agent-task-adapter-v0.1.py"
+        runtime.TASK_ENGINE_MODULE = BASE / "bin" / "anu-task-engine-v0.5.3.py"
+        runtime.EXECUTION_SPEC_MODULE = BASE / "bin" / "anu-task-execution-spec-v0.1.py"
         runtime._load_task_engine = lambda: FakeEngine()
         runtime._load_execution_spec = lambda: FakeExecutionSpec()
 

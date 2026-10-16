@@ -5,7 +5,8 @@ import importlib.util
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+REPO = Path(__file__).resolve().parents[1]
+BASE = REPO
 
 RUNTIME = (
     BASE / "bin" / "anu-agent-task-execution-runtime-v0.1.py"
@@ -46,6 +47,17 @@ class FakeDB:
         return None
 
 
+class AlwaysReadyTaskAdapter:
+    """V0.6.1 agent admission stub for older runtime tests."""
+
+    @staticmethod
+    def agent_admission(_task):
+        return {
+            "state": "READY",
+            "reason": "task can become AgentGoal",
+        }
+
+
 def test_runtime_build_contract():
     runtime = load_module(
         RUNTIME,
@@ -64,6 +76,14 @@ def test_runtime_build_contract():
         def start_task(*_args):
             return ({}, 0)
 
+        @staticmethod
+        def update_task(*_args, **_kwargs):
+            return None
+
+        @staticmethod
+        def event(*_args, **_kwargs):
+            return None
+
     class FakeExecutionSpec:
         @staticmethod
         def fetch_execution_descriptor(_db, _task_id):
@@ -76,11 +96,13 @@ def test_runtime_build_contract():
     original_adapter = runtime._load_adapter
     original_engine = runtime._load_task_engine
     original_spec = runtime._load_execution_spec
+    original_task_adapter = runtime._load_task_adapter
 
     try:
         runtime._load_adapter = lambda: FakeAdapter()
         runtime._load_task_engine = lambda: FakeEngine()
         runtime._load_execution_spec = lambda: FakeExecutionSpec()
+        runtime._load_task_adapter = lambda: AlwaysReadyTaskAdapter()
 
         adapter_calls = []
 
@@ -106,6 +128,7 @@ def test_runtime_build_contract():
         runtime._load_adapter = original_adapter
         runtime._load_task_engine = original_engine
         runtime._load_execution_spec = original_spec
+        runtime._load_task_adapter = original_task_adapter
 
 
 def test_successful_production_agent_execution():
@@ -181,6 +204,14 @@ def test_successful_production_agent_execution():
                 0,
             )
 
+        @staticmethod
+        def update_task(*_args, **_kwargs):
+            return None
+
+        @staticmethod
+        def event(*_args, **_kwargs):
+            return None
+
     class FakeExecutionSpec:
         @staticmethod
         def fetch_execution_descriptor(db, received_task_id):
@@ -192,10 +223,12 @@ def test_successful_production_agent_execution():
 
     original_engine = runtime._load_task_engine
     original_spec = runtime._load_execution_spec
+    original_task_adapter = runtime._load_task_adapter
 
     try:
         runtime._load_task_engine = lambda: FakeEngine()
         runtime._load_execution_spec = lambda: FakeExecutionSpec()
+        runtime._load_task_adapter = lambda: AlwaysReadyTaskAdapter()
 
         handler = runtime.build_production_agent_execution_handler(
             FakeDB()
@@ -213,7 +246,8 @@ def test_successful_production_agent_execution():
         assert report["state"] == "COMPLETE"
         assert report["attempts"] == 1
 
-        assert observations["fetch"] == [task_id]
+        # fetch_task runs for agent admission, then again inside the adapter.
+        assert observations["fetch"] == [task_id, task_id]
         assert observations["descriptor"] == [task_id]
 
         assert observations["start"] == [
@@ -230,6 +264,7 @@ def test_successful_production_agent_execution():
     finally:
         runtime._load_task_engine = original_engine
         runtime._load_execution_spec = original_spec
+        runtime._load_task_adapter = original_task_adapter
 
 
 def test_task_engine_failure_reaches_agent_boundary():
@@ -268,6 +303,14 @@ def test_task_engine_failure_reaches_agent_boundary():
                 1,
             )
 
+        @staticmethod
+        def update_task(*_args, **_kwargs):
+            return None
+
+        @staticmethod
+        def event(*_args, **_kwargs):
+            return None
+
     class FakeExecutionSpec:
         @staticmethod
         def fetch_execution_descriptor(_db, _task_id):
@@ -275,10 +318,12 @@ def test_task_engine_failure_reaches_agent_boundary():
 
     original_engine = runtime._load_task_engine
     original_spec = runtime._load_execution_spec
+    original_task_adapter = runtime._load_task_adapter
 
     try:
         runtime._load_task_engine = lambda: FakeEngine()
         runtime._load_execution_spec = lambda: FakeExecutionSpec()
+        runtime._load_task_adapter = lambda: AlwaysReadyTaskAdapter()
 
         handler = runtime.build_production_agent_execution_handler(
             FakeDB()
@@ -301,6 +346,7 @@ def test_task_engine_failure_reaches_agent_boundary():
     finally:
         runtime._load_task_engine = original_engine
         runtime._load_execution_spec = original_spec
+        runtime._load_task_adapter = original_task_adapter
 
 
 def test_waiting_task_engine_result_is_preserved():
@@ -341,6 +387,14 @@ def test_waiting_task_engine_result_is_preserved():
                 2,
             )
 
+        @staticmethod
+        def update_task(*_args, **_kwargs):
+            return None
+
+        @staticmethod
+        def event(*_args, **_kwargs):
+            return None
+
     class FakeExecutionSpec:
         @staticmethod
         def fetch_execution_descriptor(_db, _task_id):
@@ -348,10 +402,12 @@ def test_waiting_task_engine_result_is_preserved():
 
     original_engine = runtime._load_task_engine
     original_spec = runtime._load_execution_spec
+    original_task_adapter = runtime._load_task_adapter
 
     try:
         runtime._load_task_engine = lambda: FakeEngine()
         runtime._load_execution_spec = lambda: FakeExecutionSpec()
+        runtime._load_task_adapter = lambda: AlwaysReadyTaskAdapter()
 
         handler = runtime.build_production_agent_execution_handler(
             FakeDB()
@@ -387,6 +443,7 @@ def test_waiting_task_engine_result_is_preserved():
     finally:
         runtime._load_task_engine = original_engine
         runtime._load_execution_spec = original_spec
+        runtime._load_task_adapter = original_task_adapter
 
 
 def test_invalid_plan_rejected():
@@ -404,6 +461,14 @@ def test_invalid_plan_rejected():
         def start_task(*_args):
             return ({}, 0)
 
+        @staticmethod
+        def update_task(*_args, **_kwargs):
+            return None
+
+        @staticmethod
+        def event(*_args, **_kwargs):
+            return None
+
     class FakeExecutionSpec:
         @staticmethod
         def fetch_execution_descriptor(_db, _task_id):
@@ -415,10 +480,12 @@ def test_invalid_plan_rejected():
 
     original_engine = runtime._load_task_engine
     original_spec = runtime._load_execution_spec
+    original_task_adapter = runtime._load_task_adapter
 
     try:
         runtime._load_task_engine = lambda: FakeEngine()
         runtime._load_execution_spec = lambda: FakeExecutionSpec()
+        runtime._load_task_adapter = lambda: AlwaysReadyTaskAdapter()
 
         handler = runtime.build_production_agent_execution_handler(
             FakeDB()
@@ -451,6 +518,7 @@ def test_invalid_plan_rejected():
     finally:
         runtime._load_task_engine = original_engine
         runtime._load_execution_spec = original_spec
+        runtime._load_task_adapter = original_task_adapter
 
 
 def test_runtime_requires_db():

@@ -52,6 +52,45 @@ def _require_task_mapping(task):
     return task
 
 
+def agent_admission(task):
+    """Decide whether a task can become an AgentGoal without raising.
+
+    Returns ``{"state": "READY"|"BLOCKED", "reason": str, ...}``.
+    A BLOCKED result is for scheduler admission: the production agent
+    path must block that one task (``failure_class=contract``) and
+    continue the cycle, not fail the whole tick (V0.6.1).
+    """
+    task = _require_task_mapping(task)
+
+    if task.get("goal_id") is None:
+        return {
+            "state": "BLOCKED",
+            "reason": "task cannot become AgentGoal: goal_id is missing",
+            "failure_class": "contract",
+        }
+
+    description = task.get("description")
+    if not isinstance(description, str) or not description.strip():
+        return {
+            "state": "BLOCKED",
+            "reason": "task cannot become AgentGoal: description is missing",
+            "failure_class": "contract",
+        }
+
+    priority = task.get("priority")
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        return {
+            "state": "BLOCKED",
+            "reason": "task cannot become AgentGoal: priority is invalid",
+            "failure_class": "contract",
+        }
+
+    return {
+        "state": "READY",
+        "reason": "task can become AgentGoal",
+    }
+
+
 def task_to_agent_goal(task):
     """
     Convert a Task Engine task record into an AgentGoal.
@@ -64,26 +103,20 @@ def task_to_agent_goal(task):
     Scheduler/Task Engine identity and context are preserved inside
     immutable AgentGoal.metadata by the model contract.
     """
+    admission = agent_admission(task)
+    if admission["state"] != "READY":
+        raise ValueError(admission["reason"])
+
     task = _require_task_mapping(task)
 
     goal_id = task.get("goal_id")
     description = task.get("description")
     priority = task.get("priority")
 
-    if goal_id is None:
-        raise ValueError(
-            "task cannot become AgentGoal: goal_id is missing"
-        )
-
     # SQLite-backed Task Engine records use INTEGER goal IDs,
     # while the AgentGoal model requires a string identity.
     if isinstance(goal_id, int) and not isinstance(goal_id, bool):
         goal_id = str(goal_id)
-
-    if description is None:
-        raise ValueError(
-            "task cannot become AgentGoal: description is missing"
-        )
 
     metadata = {
         "task_id": task.get("id", task.get("task_id")),

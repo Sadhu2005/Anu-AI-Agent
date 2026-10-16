@@ -59,7 +59,7 @@ the next version.
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.6.1](versions/v0.6.1.md) | Goal → Plan → Task Graph | Step 3 (versioned plans) |
+| [V0.6.1](versions/v0.6.1.md) | Goal → Plan → Task Graph | Step 4 (template planner) |
 
 ### Planned
 

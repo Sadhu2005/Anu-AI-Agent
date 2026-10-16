@@ -1,8 +1,8 @@
-# ANU Roadmap: V0.5.9 → V0.7.0
+# ANU Roadmap: V0.6.0 → V0.7.0
 
 ## The Most Important Rule
 
-Do **not** jump from V0.5.9 to an "AI brain". Build in this order:
+Do **not** jump from reliable execution to an "AI brain". Build in this order:
 
 ```text
 SAFE EXECUTION
@@ -33,7 +33,8 @@ V0.5.6       ████████████████████  100%
 V0.5.7       ████████████████████  100%
 V0.5.8       ████████████████████  100%
 V0.5.9       ████████████████████  100%
-V0.6.x       ░░░░░░░░░░░░░░░░░░░░  0%
+V0.6.0       ████████████████████  100%  (freeze pending final regression)
+V0.6.1–.9    ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
 
@@ -68,11 +69,22 @@ and the failure path (task 187): mutation → TEST_FAILURE → rollback →
 integrity verified → ROLLED_BACK. This is ANU's first demonstrated
 autonomous production execution ([evidence](versions/v0.5.9.md#evidence)).
 
+## Milestone Reached (V0.6.0, 16 Oct 2026)
+
+Proven on the Raspberry Pi through the production service:
+
+```text
+mid-mutation restart / reboot  → cycle finishes → COMMITTED once
+mid-mutation SIGKILL / power cut → Recovery reconciles → retry after
+  2 min → COMMITTED once (same idempotency key)
+```
+
+Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
+
 ## Immediate Target
 
-[V0.6.0](versions/v0.6.0.md): make that mechanism recoverable and repeatable:
-classified retry, crash/restart recovery of interrupted runs, idempotent
-mutations, and a supported way to make a blocked task runnable again.
+[V0.6.1](versions/v0.6.1.md): Goal → Plan → Task Graph. A goal expands
+into a dependent task graph on top of recoverable execution.
 
 ## Beyond V0.7.0
 

@@ -184,6 +184,8 @@ Summarised in [CHANGELOG.md](CHANGELOG.md), in full detail in
 | 4 Oct 17:24 | V0.5.8 | Agent-aware scheduler |
 | 4 Oct | V0.5.9 | Production runtime runs the scheduler; first real autonomous task reaches Safe Mutation (blocked by changes-file path) |
 | 5 Oct 04:56 | V0.5.9 | **First autonomous COMMITTED mutation** (task 186) and verified rollback (task 187) by the production service; 42 / 42 regression; frozen |
+| 15 Oct | V0.6.0 | Graceful stop, write-ahead transactions, recovery under execution lock, interrupted-only retry; steps 1–4 deployed |
+| 15–16 Oct | V0.6.0 | Live evidence: restart and reboot complete mid-mutation; kill and forced reboot recover and retry once (tasks 224–227) |
 
 (Git times are Pi local time, UTC+1. All other times in this document are UTC.)
 
@@ -195,10 +197,12 @@ Summarised in [CHANGELOG.md](CHANGELOG.md), in full detail in
 3 Oct day       dependency graph → scheduler → execution specification
 3 Oct night     agent model → controller → adapters → WAITING / re-wake
 4 Oct           agent-aware scheduler → production runtime → first autonomous task
+5 Oct           first autonomous COMMITTED / ROLLED_BACK by the production service
+15–16 Oct       reliable execution: recover from kill, reboot, and power cut mid-mutation
 ```
 
 Controlled execution came first, then tasks, then scheduling, then the agent,
-and only then autonomy: the same order that [WHY.md](WHY.md) argues for.
+then autonomy, then reliability: the same order that [WHY.md](WHY.md) argues for.
 
 ## Version Numbering Note
 

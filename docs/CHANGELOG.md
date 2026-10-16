@@ -3,6 +3,26 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.6.0] — 2026-10-16 · freeze pending tag `v0.6.0`
+
+Reliable autonomous execution: crash, kill, and reboot mid-mutation no
+longer leave a project half-changed.
+
+- Graceful stop: `KillMode=mixed`, `TimeoutStopSec=420`, ordered after
+  `anu-sandbox.service`; SIGTERM finishes the cycle in flight
+- Write-ahead `STARTED` transaction before any file change; idempotency
+  key with at most one `COMMITTED` per key (`ALREADY_COMMITTED`)
+- Startup recovery under an exclusive execution lock: reconcile
+  `STARTED` transactions and in-flight tasks (ADR-012, ADR-013)
+- Retry only for `interrupted` work: `pending` with 2- then 10-minute
+  backoff, max 3 attempts, then `blocked`; other classes stay failed or
+  blocked
+- Live evidence on the Pi: restart and reboot complete gracefully; kill
+  and forced reboot roll back or leave untouched, then retry once
+- Nine V0.6.0 test files (38 cases); full regression 52 files on deploy
+- Known follow-up: a goal-less pending task fails the whole scheduler
+  cycle (admission hardening, outside this version)
+
 ## [V0.5.9] — 2026-10-05 · tag `v0.5.9`
 
 Autonomous production execution: **first autonomous commit and rollback by

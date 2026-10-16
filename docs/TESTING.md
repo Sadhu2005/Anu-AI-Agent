@@ -45,9 +45,12 @@ sudo -u anu-agent bash -c '
 | V0.5.7 | `test_agent_waiting_lifecycle`, `test_waiting_rewake` |
 | V0.5.8 | `test_agent_wake_binding`, `test_real_agent_wake_chain` |
 | V0.5.9 | `test_runtime_scheduler_tick`, `test_agent_task_adapter_goal_id`, `test_safe_mutation_changes_path` |
+| V0.6.0 | 9 files: `test_graceful_stop`, `test_mutation_write_ahead`, `test_mutation_idempotency`, `test_recovery_reconciler`, `test_orphan_task_recovery`, `test_crash_mid_mutation_recovery`, `test_retry_classification`, `test_scheduler_lock_recovery`, `test_startup_recovery` |
 
-`run_v0_5_1_regression.py` currently covers only the V0.5.1 and V0.5.2 files.
-There is no single runner for the full suite yet.
+Full tree on the Pi after V0.6.0: **52** files (`run_v0_5_1_regression.py`
+plus 51 `test_*.py`). `run_v0_5_1_regression.py` still covers only the
+V0.5.1 and V0.5.2 files. There is no single runner for the full suite yet;
+deploys iterate `test_*.py` as `anu-agent` with the service stopped.
 
 ## Isolation: Important
 

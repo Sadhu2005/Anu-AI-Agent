@@ -18,7 +18,7 @@ the next version.
 | [VISION.md](VISION.md) | What ANU becomes after V0.7.0: direction from V0.8 to V1.0 |
 | [DECISIONS.md](DECISIONS.md) | Architecture decision log: what was decided, why, and at what cost |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Current execution chain and target V0.7.0 architecture |
-| [ROADMAP.md](ROADMAP.md) | V0.5.9 → V0.7.0 plan, ordering rules, maturity |
+| [ROADMAP.md](ROADMAP.md) | V0.6.0 → V0.7.0 plan, ordering rules, maturity |
 | [HISTORY.md](HISTORY.md) | How ANU was built, from the first config file to the first autonomous task |
 | [CHANGELOG.md](CHANGELOG.md) | Short summary of every version |
 | [versions/](versions/) | One file per version (completed and planned) |
@@ -53,18 +53,18 @@ the next version.
 | [V0.5.7](versions/v0.5.7.md) | Real WAITING lifecycle and re-wake | Frozen | branch `v0.5.7-integration` |
 | [V0.5.8](versions/v0.5.8.md) | Agent-aware scheduler lifecycle boundary | Frozen | branch `v0.5.8-integration` |
 | [V0.5.9](versions/v0.5.9.md) | Autonomous production execution | Frozen | tag `v0.5.9` |
+| [V0.6.0](versions/v0.6.0.md) | Reliable autonomous execution | Live evidence done; freeze pending | branch `v0.6.0-integration` |
 
 ### In progress
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.6.0](versions/v0.6.0.md) | Reliable autonomous execution | Next |
+| [V0.6.1](versions/v0.6.1.md) | Goal → Plan → Task Graph | Next |
 
 ### Planned
 
 | Version | Title |
 |---|---|
-| [V0.6.0](versions/v0.6.0.md) | Reliable autonomous execution (retry, recovery, idempotency) |
 | [V0.6.1](versions/v0.6.1.md) | Goal → Plan → Task Graph |
 | [V0.6.2](versions/v0.6.2.md) | Tool / capability architecture |
 | [V0.6.3](versions/v0.6.3.md) | Memory / observation layer |

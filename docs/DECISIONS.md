@@ -299,8 +299,11 @@ retried automatically because the failure may be environmental or
 policy-related rather than a code defect.
 
 **Consequence:** after fixing an environmental cause, a human must explicitly
-make a blocked task runnable again (see LESSONS-LEARNED #6). Automatic,
-classified recovery is planned for V0.6.0.
+make a blocked task runnable again (see LESSONS-LEARNED #6). From V0.6.0,
+**interrupted** work is the one automatic exception: recovery returns it to
+`pending` with backoff (ADR-012, ADR-013). A failed plan (`code_defect`) is
+still never re-run blindly, and `blocked` remains terminal until an operator
+acts.
 
 ---
 
@@ -355,6 +358,56 @@ policy changes.
 
 ---
 
+## ADR-012: Recovery by Reconciliation Under an Exclusive Execution Lock
+
+| | |
+|---|---|
+| **Status** | Accepted |
+| **Since** | V0.6.0, 15 Oct 2026 |
+| **Enforced in** | `bin/anu-recovery-v0.1.py`; `runtime/anu-execution.lock`; Task Engine and Safe Mutation shared lock |
+
+**Decision:** Do not use leases or heartbeats for orphan detection. Every Task
+Engine and Safe Mutation run holds `runtime/anu-execution.lock` **shared**.
+Startup recovery (and post-timeout recovery) takes it **exclusively without
+waiting**. While recovery holds the lock, every `STARTED` transaction and
+in-flight task is an orphan by definition. If the exclusive lock cannot be
+taken, recovery returns `DEFERRED_ACTIVE_EXECUTION` and retries on the next
+cycle.
+
+**Why:** the CLI and tests also run tasks, so "single runtime" is false.
+A kernel `flock` is released automatically when a process dies, so a kill or
+reboot needs no lease expiry. Leases are deferred until there is more than
+one worker.
+
+**Consequence:** no new cycle starts until recovery has succeeded once per
+runtime start. Concurrent executions remain possible under the shared lock.
+
+---
+
+## ADR-013: Interrupted Mutations Are Rolled Back, Never Committed
+
+| | |
+|---|---|
+| **Status** | Accepted |
+| **Since** | V0.6.0, 15 Oct 2026 |
+| **Enforced in** | `bin/anu-recovery-v0.1.py` transaction reconciliation |
+
+**Decision:** An interrupted change is always restored to the checkpoint
+baseline (or left untouched if nothing was applied). Recovery never marks a
+transaction `COMMITTED`. Only a recorded, witnessed test pass in a live Safe
+Mutation run may produce `COMMITTED`. If evidence is mixed or corrupt,
+recovery sets `INTERRUPTED_CONFLICT` and touches nothing.
+
+**Why:** a commit requires a test that was seen to pass. After a crash there
+is no such witness. The automatic retry (interrupted class only) re-applies
+the change cleanly; the idempotency key blocks a second commit of the same
+work.
+
+**Consequence:** mid-mutation kill, timeout, or power loss can never leave a
+silent half-applied change as the accepted outcome.
+
+---
+
 ## How the Decisions Fit Together
 
 ```text
@@ -363,6 +416,7 @@ Models Off               → keeps intelligence computation out of the critical 
 SQLite                   → simple local persistent state
 Runtime-owned Scheduler  → resource health above autonomous execution
 Safe Mutation            → a controlled transaction between agent decisions and code changes
+Reconciliation recovery  → interrupted work is restored, then retried once (V0.6.0)
 ```
 
 Together they produce the core ANU philosophy:

@@ -79,7 +79,7 @@ the next version.
 | [V0.8.0](versions/v0.8.0.md) | Self-observation | Frozen · tag `v0.8.0` |
 | [V0.8.1](versions/v0.8.1.md) | Verification recovery | Frozen · tag `v0.8.1` |
 | [V0.8.2](versions/v0.8.2.md) | Richer planning | Frozen · tag `v0.8.2` |
-| [V0.8.3](versions/v0.8.3.md) | Project awareness | In progress · `v0.8.3-integration` |
+| [V0.8.3](versions/v0.8.3.md) | Project awareness | Frozen · tag `v0.8.3` |
 
 ## Working Rules
 

@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.8.3] — 2026-10-18 · branch `v0.8.3-integration`
+## [V0.8.3] — 2026-10-18 · tag `v0.8.3`
 
 Project awareness dossier (scan + memory + open goal/task counts).
 
@@ -11,7 +11,7 @@ Project awareness dossier (scan + memory + open goal/task counts).
 - Activity report `project --project-key`; goal reports attach dossier
 - LLM prompt carries `project_memory_hints` / `open_goals`
 - Pack: `run_v0_8_3_regression.py`
-- Pi smoke pending before freeze tag `v0.8.3`
+- Pi: regression **2/2**; dossier `verification_hint_count=1`
 
 ## [V0.8.2] — 2026-10-18 · tag `v0.8.2`
 

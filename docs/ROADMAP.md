@@ -104,8 +104,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.3 (project awareness dossier) is in progress on
-`v0.8.3-integration`. V0.8.2 remains frozen (tag `v0.8.2`).
+V0.8.3 is frozen (tag `v0.8.3`): project dossier for plan + reports.
+Next: further V0.8 capability slices (VISION), or pause.
 
 ## Model gateway (V0.7.1 frozen)
 

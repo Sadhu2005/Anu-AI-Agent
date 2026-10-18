@@ -3,14 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.8.0] — 2026-10-18 · branch `v0.8.0-integration`
+## [V0.8.0] — 2026-10-18 · tag `v0.8.0`
 
 Self-observation from verification decisions (ACCEPT / RETRY / ROLLBACK).
 
 - `anu-observation-memory-v0.1.py`: `record_verification_outcome`
 - `anu-verification-v0.1.py`: best-effort memory write after persist
 - Pack: `run_v0_8_0_regression.py`
-- Pi smoke pending before freeze tag `v0.8.0`
+- Pi: regression **2/2**; hint `verification ACCEPT: python_test`
 
 ## [V0.7.6] — 2026-10-18 · tag `v0.7.6`
 

@@ -101,8 +101,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.0 (self-observation from verification) is in progress on
-`v0.8.0-integration`. V0.7.6 remains frozen (tag `v0.7.6`).
+V0.8.0 is frozen (tag `v0.8.0`): verification → memory → planning hints.
+Next: further V0.8 capability slices (VISION).
 
 ## Model gateway (V0.7.1 frozen)
 

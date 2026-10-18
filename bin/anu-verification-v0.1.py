@@ -39,6 +39,10 @@ MUTATION_ROLLBACK = frozenset({
     "INTERRUPTED_CONFLICT",
 })
 
+# V0.8.1: same backoff ladder as anu-recovery-v0.1 (minutes).
+RETRY_BACKOFF_MINUTES = (2, 10)
+RECOVERY_ACTIONS = frozenset({"none", "retry", "wait", "block", "escalate"})
+
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -132,6 +136,27 @@ def _resolve_project_key(
     return None
 
 
+def _implied_recovery_action(decision, *, evidence=None, attempt=None, max_attempts=None):
+    """Best-effort recovery tag for memory when attempt may be unknown."""
+    try:
+        policy = recovery_policy_for_verification(
+            decision,
+            evidence=evidence,
+            mutation_status=(evidence or {}).get("mutation_status"),
+            attempt=attempt if attempt is not None else 1,
+            max_attempts=max_attempts if max_attempts is not None else 3,
+        )
+        return policy.get("action")
+    except Exception:
+        if decision == DECISION_ACCEPT:
+            return "none"
+        if decision == DECISION_RETRY:
+            return "retry"
+        if decision == DECISION_ROLLBACK:
+            return "block"
+        return None
+
+
 def _record_verification_memory_best_effort(
     db,
     *,
@@ -142,6 +167,8 @@ def _record_verification_memory_best_effort(
     mutation_result=None,
     task_id=None,
     goal_id=None,
+    attempt=None,
+    max_attempts=None,
 ):
     """V0.8.0: persist verification decision as observation + memory."""
     mem = _load_observation_memory()
@@ -158,6 +185,12 @@ def _record_verification_memory_best_effort(
         return None
     try:
         mem.migrate(db)
+        recovery_action = _implied_recovery_action(
+            decision,
+            evidence=evidence,
+            attempt=attempt,
+            max_attempts=max_attempts,
+        )
         return mem.record_verification_outcome(
             db,
             project_key=resolved,
@@ -166,6 +199,7 @@ def _record_verification_memory_best_effort(
             task_id=task_id,
             goal_id=goal_id,
             evidence=evidence,
+            recovery_action=recovery_action,
         )
     except Exception:
         return None
@@ -676,6 +710,7 @@ def evaluate_mutation_attempt(
             mutation_result=result,
             task_id=task_id,
             goal_id=goal_id,
+            attempt=attempt,
         )
         if mem_result and isinstance(record, dict):
             record["memory_id"] = (mem_result.get("memory") or {}).get("id")
@@ -755,31 +790,151 @@ def evaluate_goal_acceptance(db, goal_id, *, persist=True):
     return record
 
 
-def decision_to_task_outcome(decision, mutation_status=None):
-    """Map verification decision onto task-engine status + failure_class."""
+def _retry_backoff_minutes(attempt):
+    """Minutes until next retry (2m, then 10m), matching anu-recovery."""
+    try:
+        n = int(attempt or 1)
+    except (TypeError, ValueError):
+        n = 1
+    index = min(max(n, 1), len(RETRY_BACKOFF_MINUTES)) - 1
+    return RETRY_BACKOFF_MINUTES[index]
+
+
+def _env_or_compile_signal(evidence=None, mutation_status=None):
+    """True when evidence suggests wait (compile/env) rather than immediate retry."""
+    evidence = evidence or {}
+    questions = evidence.get("questions") or {}
+    if questions.get("compile") is False:
+        return True
+    if evidence.get("baseline_ok") is False:
+        return True
+    status = mutation_status or evidence.get("mutation_status")
+    if status == "ABORTED_BASELINE_FAILURE":
+        return True
+    return False
+
+
+def _rollback_failure_class(mutation_status=None, evidence=None):
+    status = mutation_status or (evidence or {}).get("mutation_status")
+    if status == "ABORTED_BASELINE_FAILURE":
+        return "environment"
+    if status == "MUTATION_ENGINE_ERROR":
+        return "contract"
+    questions = (evidence or {}).get("questions") or {}
+    if questions.get("no_unintended") is False:
+        return "contract"
+    if questions.get("checkpoint") is False or questions.get("rollback") is False:
+        return "integrity"
+    return "integrity"
+
+
+def recovery_policy_for_verification(
+    decision,
+    *,
+    evidence=None,
+    mutation_status=None,
+    attempt=1,
+    max_attempts=3,
+):
+    """V0.8.1: classify recovery action from a verification decision.
+
+    failure → classify → is retry safe? → retry / wait / block / escalate
+    """
+    if decision not in DECISIONS:
+        raise ValueError(
+            f"invalid verification decision: {decision!r}; "
+            f"allowed={sorted(DECISIONS)}"
+        )
+    try:
+        attempt_n = int(attempt if attempt is not None else 1)
+    except (TypeError, ValueError):
+        attempt_n = 1
+    try:
+        max_n = int(max_attempts if max_attempts is not None else 3)
+    except (TypeError, ValueError):
+        max_n = 3
+    if max_n < 1:
+        max_n = 1
+
+    evidence = evidence or {}
+    status = mutation_status or evidence.get("mutation_status")
+
     if decision == DECISION_ACCEPT:
         return {
+            "action": "none",
+            "recovery_action": "none",
             "task_status": "completed",
             "failure_class": None,
             "retryable": False,
+            "retry_after_minutes": None,
+            "reason": "verification ACCEPT; no recovery needed",
         }
+
     if decision == DECISION_RETRY:
+        if attempt_n >= max_n:
+            return {
+                "action": "escalate",
+                "recovery_action": "escalate",
+                "task_status": "blocked",
+                "failure_class": "code_defect",
+                "retryable": False,
+                "retry_after_minutes": None,
+                "reason": (
+                    f"verification RETRY exhausted attempts "
+                    f"({attempt_n}>={max_n}); escalate"
+                ),
+            }
+        wait = _env_or_compile_signal(evidence, status)
+        action = "wait" if wait else "retry"
+        detail = "compile/env signal" if wait else "safe to retry"
         return {
+            "action": action,
+            "recovery_action": action,
             "task_status": "failed",
-            "failure_class": "code_defect",
+            "failure_class": "environment" if wait else "code_defect",
             "retryable": True,
+            "retry_after_minutes": _retry_backoff_minutes(attempt_n),
+            "reason": (
+                f"verification RETRY: {detail}; "
+                f"backoff {_retry_backoff_minutes(attempt_n)}m"
+            ),
         }
+
     # ROLLBACK
-    failure = "integrity"
-    if mutation_status == "ABORTED_BASELINE_FAILURE":
-        failure = "environment"
-    elif mutation_status == "MUTATION_ENGINE_ERROR":
-        failure = "contract"
+    failure = _rollback_failure_class(status, evidence)
+    if failure == "environment":
+        action = "escalate"
+        reason = "verification ROLLBACK: environment failure; escalate"
+    else:
+        action = "block"
+        reason = f"verification ROLLBACK: {failure}; block (not auto-retried)"
     return {
+        "action": action,
+        "recovery_action": action,
         "task_status": "blocked",
         "failure_class": failure,
         "retryable": False,
+        "retry_after_minutes": None,
+        "reason": reason,
     }
+
+
+def decision_to_task_outcome(
+    decision,
+    mutation_status=None,
+    *,
+    evidence=None,
+    attempt=1,
+    max_attempts=3,
+):
+    """Map verification decision onto task-engine status + recovery policy."""
+    return recovery_policy_for_verification(
+        decision,
+        evidence=evidence,
+        mutation_status=mutation_status,
+        attempt=attempt,
+        max_attempts=max_attempts,
+    )
 
 
 def main(argv=None):

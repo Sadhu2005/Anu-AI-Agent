@@ -25,7 +25,7 @@ import sqlite3
 import subprocess
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
@@ -667,6 +667,10 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
     )
 
     verification_record = None
+    outcome = None
+    recovery_action = None
+    recovery_reason = None
+    retry_after_minutes = None
     try:
         verification_record = _verify_mutation_attempt(
             task_id, attempt, run_id, result
@@ -698,10 +702,35 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             },
         )
         verification = _load_verification()
-        outcome = verification.decision_to_task_outcome(
-            verification_record["decision"],
-            mutation_status=result.get("status"),
-        )
+        try:
+            outcome = verification.decision_to_task_outcome(
+                verification_record["decision"],
+                mutation_status=result.get("status"),
+                evidence=verification_record.get("evidence"),
+                attempt=attempt,
+                max_attempts=MAX_ATTEMPTS,
+            )
+        except Exception:
+            # V0.8.1: never break verify path if policy helper fails.
+            outcome = {
+                "action": None,
+                "recovery_action": None,
+                "task_status": (
+                    "completed"
+                    if verification_record.get("decision") == "ACCEPT"
+                    else "failed"
+                    if verification_record.get("decision") == "RETRY"
+                    else "blocked"
+                ),
+                "failure_class": (
+                    None
+                    if verification_record.get("decision") == "ACCEPT"
+                    else FAILURE_CLASSES.get(result.get("status"), "integrity")
+                ),
+                "retryable": verification_record.get("decision") == "RETRY",
+                "retry_after_minutes": None,
+                "reason": "recovery policy fallback",
+            }
         # COMPLETE only with ACCEPT (exit criterion).
         if outcome["task_status"] == "completed":
             gate_db = db_connect()
@@ -711,9 +740,13 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 )
             except Exception as exc:
                 outcome = {
+                    "action": "block",
+                    "recovery_action": "block",
                     "task_status": "blocked",
                     "failure_class": "integrity",
                     "retryable": False,
+                    "retry_after_minutes": None,
+                    "reason": "COMPLETE refused without ACCEPT verification",
                 }
                 event(
                     task_id,
@@ -729,6 +762,33 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 gate_db.close()
         final_status = outcome["task_status"]
         failure_class = outcome.get("failure_class")
+        recovery_action = outcome.get("recovery_action") or outcome.get("action")
+        recovery_reason = outcome.get("reason")
+        retry_after_minutes = outcome.get("retry_after_minutes")
+        # V0.8.1: auditable recovery classification (non-ACCEPT).
+        if recovery_action and recovery_action != "none":
+            retry_after_iso = None
+            if retry_after_minutes:
+                retry_after_iso = (
+                    datetime.now(timezone.utc)
+                    + timedelta(minutes=int(retry_after_minutes))
+                ).isoformat()
+            event(
+                task_id,
+                "TASK_RECOVERY_POLICY",
+                recovery_reason or f"recovery {recovery_action}",
+                {
+                    "attempt": attempt,
+                    "run_id": run_id,
+                    "action": recovery_action,
+                    "reason": recovery_reason,
+                    "failure_class": failure_class,
+                    "retry_after": retry_after_iso,
+                    "retry_after_minutes": retry_after_minutes,
+                    "verification_id": verification_record.get("id"),
+                    "decision": verification_record.get("decision"),
+                },
+            )
     else:
         # Verification module missing: keep legacy classify (pre-V0.6.5).
         final_status = classify_mutation(result, process.returncode)
@@ -737,9 +797,10 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             if final_status == "failed"
             else FAILURE_CLASSES.get(result.get("status"), "integrity")
         )
+        outcome = None
 
     if final_status == "completed":
-        update_task(task_id, status="completed")
+        update_task(task_id, status="completed", retry_after=None)
         event(
             task_id,
             "TASK_COMPLETED",
@@ -774,6 +835,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "retryable": False,
                 "mutation": result,
                 "verification": verification_record,
+                "recovery_action": recovery_action or "none",
                 "engine_exit_code": process.returncode,
                 "engine_stderr": process.stderr[-8000:],
             },
@@ -781,13 +843,23 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
         )
 
     if final_status == "failed":
+        retry_after_iso = None
+        if retry_after_minutes:
+            retry_after_iso = (
+                datetime.now(timezone.utc)
+                + timedelta(minutes=int(retry_after_minutes))
+            ).isoformat()
         update_task(
             task_id,
             status="failed",
             failure_class=failure_class or FAILURE_CLASSES["ROLLED_BACK"],
+            retry_after=retry_after_iso,
         )
 
-        retryable = attempt < MAX_ATTEMPTS
+        if outcome is not None and "retryable" in outcome:
+            retryable = bool(outcome["retryable"])
+        else:
+            retryable = attempt < MAX_ATTEMPTS
         event(
             task_id,
             "TASK_FAILED",
@@ -798,6 +870,8 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "max_attempts": MAX_ATTEMPTS,
                 "retryable": retryable,
                 "failure_class": failure_class or FAILURE_CLASSES["ROLLED_BACK"],
+                "retry_after": retry_after_iso,
+                "recovery_action": recovery_action,
                 "transaction_id": result.get("transaction_id"),
                 "mutation_status": result.get("status"),
                 "rollback_attempted": result.get("rollback_attempted"),
@@ -827,6 +901,8 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "remaining_attempts": max(MAX_ATTEMPTS - attempt, 0),
                 "mutation": result,
                 "verification": verification_record,
+                "recovery_action": recovery_action,
+                "retry_after": retry_after_iso,
                 "engine_exit_code": process.returncode,
                 "engine_stderr": process.stderr[-8000:],
             },
@@ -835,7 +911,12 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
 
     if failure_class is None:
         failure_class = FAILURE_CLASSES.get(result.get("status"), "integrity")
-    update_task(task_id, status="blocked", failure_class=failure_class)
+    update_task(
+        task_id,
+        status="blocked",
+        failure_class=failure_class,
+        retry_after=None,
+    )
     event(
         task_id,
         "TASK_BLOCKED",
@@ -846,6 +927,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             "transaction_id": result.get("transaction_id"),
             "mutation_status": result.get("status"),
             "failure_class": failure_class,
+            "recovery_action": recovery_action,
             "verification_id": (
                 None
                 if verification_record is None
@@ -869,6 +951,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             "retryable": False,
             "mutation": result,
             "verification": verification_record,
+            "recovery_action": recovery_action,
             "engine_exit_code": process.returncode,
             "engine_stderr": process.stderr[-8000:],
         },

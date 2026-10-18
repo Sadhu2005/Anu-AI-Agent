@@ -396,6 +396,7 @@ def classify_verification_outcome(
     operation=None,
     evidence=None,
     reason=None,
+    recovery_action=None,
 ):
     """Build summary, failure_class, and tags for a verification decision."""
     if decision not in VERIFICATION_DECISIONS:
@@ -431,6 +432,8 @@ def classify_verification_outcome(
         tags.append(f"failure:{failure_class}")
     else:
         tags.append("success")
+    if recovery_action:
+        tags.append(f"recovery:{recovery_action}")
     return summary, failure_class, tags
 
 
@@ -444,6 +447,7 @@ def record_verification_outcome(
     goal_id=None,
     evidence=None,
     reason=None,
+    recovery_action=None,
     confidence=None,
     ttl_hours=DEFAULT_TTL_HOURS,
 ):
@@ -458,6 +462,7 @@ def record_verification_outcome(
         operation=operation,
         evidence=evidence,
         reason=reason,
+        recovery_action=recovery_action,
     )
     payload = {
         "project_key": project_key,

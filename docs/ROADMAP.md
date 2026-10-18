@@ -100,8 +100,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.7.6](versions/v0.7.6.md) LLM-aware replan on `v0.7.6-integration`.
-V0.7.5 is frozen (tag `v0.7.5`).
+V0.7.6 is frozen (tag `v0.7.6`): recovery replan via optional LLM planner.
+Next: further 0.7.x glue, or V0.8 capability work (VISION).
 
 ## Model gateway (V0.7.1 frozen)
 

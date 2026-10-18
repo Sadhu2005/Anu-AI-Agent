@@ -384,7 +384,7 @@ def test_load_planner_config_from_repo():
     try:
         cfg = p.load_planner_config()
         assert cfg["mode"] in ("llm_optional", "template_only")
-        assert cfg["fallback_template"] == "improve_sandbox"
+        assert cfg["fallback_template"] == "multi_stage_goal"
         assert cfg["max_steps"] >= 1
     finally:
         if old is None:

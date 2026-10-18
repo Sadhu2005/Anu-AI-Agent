@@ -49,6 +49,6 @@ socket:
 # V0.7.2: optional LLM planning via gateway; template fallback on failure.
 planner:
   mode: llm_optional   # llm_optional | template_only
-  fallback_template: improve_sandbox
+  fallback_template: multi_stage_goal
   max_steps: 8
   timeout_seconds: 60

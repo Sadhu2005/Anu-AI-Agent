@@ -179,10 +179,18 @@ def test_replan_supersedes_previous():
     path, db = make_db()
     try:
         first = planner.expand_goal(
-            db, 1, "sandbox-test-project", plan_id="plan-a"
+            db,
+            1,
+            "sandbox-test-project",
+            template_name="improve_sandbox",
+            plan_id="plan-a",
         )
         second = planner.expand_goal(
-            db, 1, "sandbox-test-project", plan_id="plan-b"
+            db,
+            1,
+            "sandbox-test-project",
+            template_name="improve_sandbox",
+            plan_id="plan-b",
         )
         assert first["plan"]["version"] == 1
         assert second["plan"]["version"] == 2

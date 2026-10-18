@@ -31,7 +31,46 @@ ALLOWED_OPERATIONS = frozenset({"python_test", "python_compile"})
 # Named templates. Every step maps to an existing Safe Mutation operation.
 # Roles are recorded in AgentAction.parameters for later planners; execution
 # still goes through python_test / python_compile only.
+DEFAULT_TEMPLATE = "multi_stage_goal"
+
 TEMPLATES = {
+    "multi_stage_goal": [
+        {
+            "action_id": "research",
+            "kind": "TASK",
+            "description": "survey project / gather baseline",
+            "operation": "python_compile",
+            "role": "research",
+        },
+        {
+            "action_id": "design",
+            "kind": "TASK",
+            "description": "decide approach",
+            "operation": "python_compile",
+            "role": "design",
+        },
+        {
+            "action_id": "implement",
+            "kind": "TASK",
+            "description": "apply safe modification",
+            "operation": "python_test",
+            "role": "implement",
+        },
+        {
+            "action_id": "test",
+            "kind": "TASK",
+            "description": "run tests",
+            "operation": "python_test",
+            "role": "test",
+        },
+        {
+            "action_id": "verify",
+            "kind": "TASK",
+            "description": "verify final state",
+            "operation": "python_test",
+            "role": "verify",
+        },
+    ],
     "improve_sandbox": [
         {
             "action_id": "inspect",
@@ -270,7 +309,7 @@ def expand_goal(
     db,
     goal_id,
     project,
-    template_name="improve_sandbox",
+    template_name=DEFAULT_TEMPLATE,
     changes_file="changes.json",
     plan_id=None,
 ):
@@ -408,7 +447,7 @@ def main(argv=None):
     expand_p = sub.add_parser("expand")
     expand_p.add_argument("--goal-id", type=int, required=True)
     expand_p.add_argument("--project", required=True)
-    expand_p.add_argument("--template", default="improve_sandbox")
+    expand_p.add_argument("--template", default=DEFAULT_TEMPLATE)
     expand_p.add_argument("--changes-file", default="changes.json")
     expand_p.add_argument("--plan-id", default=None)
 

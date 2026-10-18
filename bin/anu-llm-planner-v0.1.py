@@ -3,7 +3,7 @@
 
 Model output is untrusted: parse → validate → only existing operations
 (``python_test`` / ``python_compile``). Gateway down or invalid JSON →
-template planner fallback (``improve_sandbox``).
+template planner fallback (``multi_stage_goal``).
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ DB_FILE = BASE / "brain" / "anu-brain.db"
 _HERE = Path(__file__).resolve().parent
 
 ALLOWED_OPERATIONS = frozenset({"python_test", "python_compile"})
-DEFAULT_FALLBACK_TEMPLATE = "improve_sandbox"
+DEFAULT_FALLBACK_TEMPLATE = "multi_stage_goal"
 DEFAULT_MAX_STEPS = 8
 
 SYSTEM_PROMPT = (
@@ -34,14 +34,16 @@ SYSTEM_PROMPT = (
     "Reply with ONE JSON object only (no markdown, no prose). "
     "Schema: {\"steps\":[{\"role\":\"short_id\",\"description\":\"one line\","
     "\"operation\":\"python_test\"|\"python_compile\"}]}. "
+    "Prefer stage roles research, design, implement, test, verify when applicable. "
     "1-8 steps. Only those two operations. No shell, paths, or commands."
 )
 
 RETRY_SYSTEM_PROMPT = (
     "IMPORTANT: Your previous reply was invalid. "
     "Output ONLY this JSON shape, nothing else, no tool calls: "
-    "{\"steps\":[{\"role\":\"inspect\",\"description\":\"inspect project\","
-    "\"operation\":\"python_test\"}]}. "
+    "{\"steps\":[{\"role\":\"research\",\"description\":\"survey project\","
+    "\"operation\":\"python_compile\"}]}. "
+    "Prefer roles research, design, implement, test, verify. "
     "Use 1-8 real steps for the goal. Operations: python_test or python_compile only."
 )
 
@@ -352,7 +354,9 @@ def _build_user_prompt(goal, project_key, project_ctx, memory):
     }
     return (
         "Propose a linear plan for this ANU goal. "
-        "Use only python_test or python_compile.\n"
+        "Use only python_test or python_compile. "
+        "Prefer stage roles research, design, implement, test, verify "
+        "when they fit the goal.\n"
         + json.dumps(payload, indent=2)
     )
 
@@ -656,7 +660,7 @@ def expand_goal(
     db,
     goal_id,
     project,
-    template_name=DEFAULT_FALLBACK_TEMPLATE,
+    template_name=None,
     changes_file="changes.json",
     plan_id=None,
     *,
@@ -666,7 +670,7 @@ def expand_goal(
     db = _require_db(db)
     cfg = planner_config or load_planner_config()
     fallback = cfg.get("fallback_template") or DEFAULT_FALLBACK_TEMPLATE
-    # Callers may still pass template_name as the preferred fallback.
+    # Explicit template_name wins over config (None → use config/default).
     if template_name and template_name != "llm":
         fallback = template_name
 

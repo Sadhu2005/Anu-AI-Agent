@@ -353,7 +353,7 @@ def replan_goal(
         raise ValueError(f"goal does not exist: goal_id={goal_id}")
 
     inferred = _infer_execution_context(db, goal_id)
-    template_name = template_name or inferred["template_name"] or "improve_sandbox"
+    template_name = template_name or inferred["template_name"] or "multi_stage_goal"
     project = project or inferred["project"]
     changes_file = changes_file or inferred["changes_file"] or "changes.json"
 

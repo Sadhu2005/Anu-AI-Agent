@@ -173,7 +173,7 @@ def expand_pending_goals(
     db,
     *,
     max_goals=1,
-    template_name="improve_sandbox",
+    template_name="multi_stage_goal",
     changes_file="changes.json",
 ):
     """Expand up to max_goals pending goals that are not yet planned.
@@ -325,7 +325,7 @@ def run_goal_cycle_once(
     db,
     *,
     max_expand=1,
-    template_name="improve_sandbox",
+    template_name="multi_stage_goal",
     changes_file="changes.json",
     sync=True,
 ):
@@ -361,7 +361,7 @@ def main(argv=None):
 
     expand_p = sub.add_parser("expand")
     expand_p.add_argument("--max-goals", type=int, default=1)
-    expand_p.add_argument("--template", default="improve_sandbox")
+    expand_p.add_argument("--template", default="multi_stage_goal")
     expand_p.add_argument("--changes-file", default="changes.json")
 
     sync_p = sub.add_parser("sync")
@@ -369,7 +369,7 @@ def main(argv=None):
 
     cycle_p = sub.add_parser("once")
     cycle_p.add_argument("--max-expand", type=int, default=1)
-    cycle_p.add_argument("--template", default="improve_sandbox")
+    cycle_p.add_argument("--template", default="multi_stage_goal")
     cycle_p.add_argument("--changes-file", default="changes.json")
     cycle_p.add_argument("--no-sync", action="store_true")
 

@@ -54,13 +54,13 @@ the next version.
 | [V0.5.8](versions/v0.5.8.md) | Agent-aware scheduler lifecycle boundary | Frozen | branch `v0.5.8-integration` |
 | [V0.5.9](versions/v0.5.9.md) | Autonomous production execution | Frozen | tag `v0.5.9` |
 | [V0.6.0](versions/v0.6.0.md) | Reliable autonomous execution | Frozen | tag `v0.6.0`, branch `v0.6.0-integration` |
-| [V0.6.1](versions/v0.6.1.md) | Goal → Plan → Task Graph | Frozen | tag pending `v0.6.1`, branch `v0.6.1-integration` |
+| [V0.6.1](versions/v0.6.1.md) | Goal → Plan → Task Graph | Frozen | tag `v0.6.1`, branch `v0.6.1-integration` |
 
 ### In progress
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.6.2](versions/v0.6.2.md) | Capabilities | Next |
+| [V0.6.2](versions/v0.6.2.md) | Capabilities | Step 1 (capability registry) |
 
 ### Planned
 

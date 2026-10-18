@@ -3,15 +3,15 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.7.0] — in progress · branch `v0.7.0-integration`
+## [V0.7.0] — 2026-10-18 · tag `v0.7.0`
 
 Real ANU agent runtime (integration of V0.6.x).
 
 - Goal cycle glue: expand pending + sync statuses + remember on complete
 - Runtime: wake re-eval → expand → schedule → goal sync each tick
 - Production deploy gate: `safe-mutation --production`
-- Portable regression (8) + failure injection (6); full chain V0.6.1→V0.7.0
-- Pi live E2E evidence pending
+- Pi: regression **8/8**; failure injection **6/6**; heartbeat `running`
+  (7 active goals, startup recovery)
 
 ## [V0.6.9] — 2026-10-18 · tag `v0.6.9`
 

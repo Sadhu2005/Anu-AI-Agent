@@ -44,7 +44,7 @@ V0.6.6       ████████████████████  100%
 V0.6.7       ████████████████████  100%
 V0.6.8       ████████████████████  100%
 V0.6.9       ████████████████████  100%
-V0.7.0       ██████████████░░░░░░   70%  (exit-criteria glue; Pi evidence pending)
+V0.7.0       ████████████████████  100%
 ```
 
 
@@ -93,12 +93,11 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-Finish [V0.7.0](versions/v0.7.0.md) on Pi: pull step 2, run regression +
-failure injection, prove live goal remember / approval / reboot / resource,
-then freeze.
+Post-V0.7.0: model gateway as its own release; V0.8+ per [VISION.md](VISION.md).
 
-V0.6.9 is frozen (tag `v0.6.9`). V0.7.0 step 2 is on `v0.7.0-integration`:
-memory on complete, production gate, exit-criteria portable packs.
+V0.7.0 is frozen (tag `v0.7.0`): goal spine + remember + production gate;
+Pi regression 8/8, failure injection 6/6, heartbeat running
+([versions/v0.7.0.md](versions/v0.7.0.md)).
 
 ## Model gateway (separate release)
 

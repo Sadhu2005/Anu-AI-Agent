@@ -63,12 +63,7 @@ the next version.
 | [V0.6.7](versions/v0.6.7.md) | Human approval boundary | Frozen | tag `v0.6.7` |
 | [V0.6.8](versions/v0.6.8.md) | Long-running agent | Frozen | tag `v0.6.8` |
 | [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening | Frozen | tag `v0.6.9` |
-
-### In progress
-
-| Version | Title | Status |
-|---|---|---|
-| [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Step 2 (exit-criteria glue) |
+| [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Frozen | tag `v0.7.0` |
 
 ## Working Rules
 

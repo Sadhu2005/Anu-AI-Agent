@@ -28,11 +28,11 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.7.0 in progress; branch **`v0.7.0-integration`** (V0.6.9 frozen) |
-| **Proven** | V0.5.9–V0.6.9 as before; V0.7.0 spine + remember + production gate |
-| **Maturity** | V0.6.9 **100%** · V0.7.0 **~70%** (Pi live evidence pending) |
-| **Next** | Pi: regression + failure injection + live exit-criteria proofs, freeze |
-| **Then** | Tag `v0.7.0` when Pi evidence is recorded |
+| **Version** | V0.7.0 frozen (tag `v0.7.0`); branch **`v0.7.0-integration`** |
+| **Proven** | V0.5.9–V0.6.9 as before; V0.7.0 runtime spine + remember + gates on Pi |
+| **Maturity** | V0.6.9 **100%** · V0.7.0 **100%** |
+| **Next** | Model gateway (separate release) · V0.8+ per vision |
+| **Then** | Capability / goal-level autonomy direction |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
 

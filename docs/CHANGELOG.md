@@ -3,6 +3,16 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.6.6] — in progress · branch `v0.6.6-integration`
+
+Resource-aware intelligence: work selection from machine conditions.
+
+- `anu-resources.yaml` authoritative via `anu-resource-policy-v0.1.py`
+- Temperature hysteresis (`resume_celsius`); Guardian state file
+- Scheduler RUN/WAIT/DENY (heavy low RAM, hot host, disk DENY)
+- Task Engine `MAX_ATTEMPTS` from policy; consistency gate (G5)
+- Portable regression pending Pi evidence
+
 ## [V0.6.5] — 2026-10-18 · tag `v0.6.5`
 
 Verification / evaluation: formal ACCEPT | RETRY | ROLLBACK per attempt.

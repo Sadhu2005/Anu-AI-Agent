@@ -58,7 +58,30 @@ TERMINAL = {"completed", "blocked"}
 RETRYABLE = {"failed"}
 RUNNABLE = {"pending", "ready"}
 IN_FLIGHT = {"planning", "ready", "running", "verifying"}
-MAX_ATTEMPTS = 3
+
+
+def _max_attempts_from_policy():
+    """V0.6.6: MAX_ATTEMPTS from authoritative resource policy."""
+    for candidate in (
+        BASE / "bin" / "anu-resource-policy-v0.1.py",
+        _HERE / "anu-resource-policy-v0.1.py",
+    ):
+        if not candidate.is_file():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "anu_resource_policy_v0_1_engine",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return int(mod.max_attempts())
+        except Exception:
+            continue
+    return 3
+
+
+MAX_ATTEMPTS = _max_attempts_from_policy()
 
 LOST_MUTATION_REASONS = {
     "mutation_engine_timeout",

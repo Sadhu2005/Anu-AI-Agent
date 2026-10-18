@@ -1,3 +1,8 @@
+# V0.6.6: authoritative resource policy (single source of truth).
+# Guardian, Governor, Task Engine, and scheduler admission read via
+# bin/anu-resource-policy-v0.1.py. Other YAML files must stay consistent
+# (see assert_policy_consistency).
+
 resource_policy:
 
   cpu:
@@ -9,10 +14,13 @@ resource_policy:
     total_gb: 8
     max_mb: 3072
     emergency_free_mb: 1024
+    # Admission host_safety.minimum_free_ram_mb (Governor soft floor).
+    minimum_free_ram_mb: 2048
 
   # Must match host_safety in anu-admission-policy.yaml.
   # The runtime only schedules work while the Guardian reports NORMAL,
   # so warning_celsius is the point where new autonomous work stops.
+  # After WARNING/PAUSE, resume only below resume_celsius (hysteresis).
   temperature:
     warning_celsius: 60
     pause_celsius: 65
@@ -20,6 +28,13 @@ resource_policy:
 
   storage:
     minimum_free_gb: 50
+
+  execution:
+    max_attempts_per_task: 3
+    heavy_workload_ram_threshold_mb: 1024
+    heavy_workload_cpu_threshold_percent: 60
+    # Profiles at or above this RAM estimate are "heavy".
+    heavy_profile_ram_mb: 512
 
   production:
     priority: highest

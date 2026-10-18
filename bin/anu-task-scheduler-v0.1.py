@@ -1,17 +1,30 @@
 #!/usr/bin/env python3
 
 import importlib.util
+import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-BASE = Path(__file__).resolve().parent.parent
+BASE = Path(os.environ.get("ANU_BASE", Path(__file__).resolve().parent.parent))
+_HERE = Path(__file__).resolve().parent
 GRAPH_MODULE = BASE / "bin" / "anu-task-graph-v0.1.py"
+if not GRAPH_MODULE.is_file():
+    GRAPH_MODULE = _HERE / "anu-task-graph-v0.1.py"
 EXECUTION_SPEC_MODULE = (
     BASE / "bin" / "anu-task-execution-spec-v0.1.py"
 )
+if not EXECUTION_SPEC_MODULE.is_file():
+    EXECUTION_SPEC_MODULE = _HERE / "anu-task-execution-spec-v0.1.py"
 
 LIFECYCLE_MODULE = BASE / "bin" / "anu-scheduler-runtime-v0.1.py"
+if not LIFECYCLE_MODULE.is_file():
+    LIFECYCLE_MODULE = _HERE / "anu-scheduler-runtime-v0.1.py"
+
+RESOURCE_POLICY_MODULE = BASE / "bin" / "anu-resource-policy-v0.1.py"
+if not RESOURCE_POLICY_MODULE.is_file():
+    RESOURCE_POLICY_MODULE = _HERE / "anu-resource-policy-v0.1.py"
 
 
 def _load_graph():
@@ -62,6 +75,145 @@ def _load_lifecycle():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_resource_policy():
+    if not RESOURCE_POLICY_MODULE.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location(
+        "anu_resource_policy_v0_1_scheduler",
+        RESOURCE_POLICY_MODULE,
+    )
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _task_operation(db, task_id):
+    """Best-effort operation name from task_execution_specs."""
+    try:
+        row = db.execute(
+            """
+            SELECT operation FROM task_execution_specs
+            WHERE task_id = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (task_id,),
+        ).fetchone()
+    except Exception:
+        return "python_test"
+    if row is None:
+        return "python_test"
+    if hasattr(row, "keys"):
+        return row["operation"] or "python_test"
+    return row[0] or "python_test"
+
+
+def _host_snapshot_for_admission(resource_mod):
+    """Build a lightweight snapshot; prefer Guardian state + /proc when present."""
+    status = "NORMAL"
+    state = resource_mod.load_guardian_state()
+    if state.get("status"):
+        status = state["status"]
+
+    available_mb = None
+    disk_free_gb = None
+    try:
+        values = {}
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                key, value = line.split(":", 1)
+                values[key] = int(value.strip().split()[0])
+        available_mb = round(
+            values.get("MemAvailable", values.get("MemFree", 0)) / 1024,
+            2,
+        )
+    except Exception:
+        available_mb = 4096.0  # portable / non-Linux default: ample
+
+    try:
+        import shutil
+        usage = shutil.disk_usage("/")
+        disk_free_gb = round(usage.free / (1024 ** 3), 2)
+    except Exception:
+        disk_free_gb = 100.0
+
+    return {
+        "status": status,
+        "available_mb": available_mb,
+        "disk_free_gb": disk_free_gb,
+    }
+
+
+def filter_candidates_by_resources(db, candidates, resource_snapshot=None):
+    """Apply V0.6.6 RUN/WAIT/DENY admission; persist WAIT retry_after.
+
+    Returns (runnable_candidates, deferred_results).
+    """
+    resource_mod = _load_resource_policy()
+    if resource_mod is None:
+        return list(candidates), []
+
+    policy = resource_mod.load_resource_policy()
+    snap = resource_snapshot or _host_snapshot_for_admission(resource_mod)
+    runnable = []
+    deferred = []
+
+    for candidate in candidates:
+        task_id = candidate["task_id"]
+        operation = _task_operation(db, task_id)
+        decision = resource_mod.admit_task(
+            policy,
+            host_status=snap.get("status"),
+            memory_available_mb=snap.get("available_mb"),
+            disk_free_gb=snap.get("disk_free_gb"),
+            operation=operation,
+        )
+        if decision["decision"] == resource_mod.DECISION_RUN:
+            runnable.append(candidate)
+            continue
+
+        if decision["decision"] == resource_mod.DECISION_WAIT:
+            retry_after = decision.get("retry_after")
+            if retry_after and _has_task_column(db, "retry_after"):
+                db.execute(
+                    "UPDATE tasks SET retry_after = ? WHERE id = ?",
+                    (retry_after, task_id),
+                )
+                db.commit()
+            deferred.append({
+                "task_id": task_id,
+                "action": "WAIT",
+                "reason": decision.get("reason"),
+                "retry_after": retry_after,
+            })
+            continue
+
+        # DENY → block with environment failure class when column exists.
+        if _has_task_column(db, "failure_class"):
+            db.execute(
+                """
+                UPDATE tasks
+                SET status = 'blocked', failure_class = 'environment'
+                WHERE id = ?
+                """,
+                (task_id,),
+            )
+        else:
+            db.execute(
+                "UPDATE tasks SET status = 'blocked' WHERE id = ?",
+                (task_id,),
+            )
+        db.commit()
+        deferred.append({
+            "task_id": task_id,
+            "action": "BLOCK",
+            "reason": decision.get("reason"),
+        })
+
+    return runnable, deferred
 
 
 def _has_task_column(db, column):
@@ -216,20 +368,22 @@ def run_production_scheduler_cycle(db, max_tasks):
         raise ValueError("max_tasks must be a positive integer")
 
     candidates = discover_ready_tasks(db)
+    candidates, deferred = filter_candidates_by_resources(db, candidates)
     selected = candidates[:max_tasks]
 
     if not selected:
-        return []
+        return deferred
 
     plan = build_ready_task_wake_plan(db, selected)
     wake_handler = build_production_wake_execution_handler(db)
 
-    return consume_dependency_wake_plan(
+    results = consume_dependency_wake_plan(
         plan,
         {
             "WAKE": wake_handler,
         },
     )
+    return list(results) + list(deferred)
 
 
 def run_production_agent_scheduler_cycle(db, max_tasks):
@@ -249,20 +403,22 @@ def run_production_agent_scheduler_cycle(db, max_tasks):
         raise ValueError("max_tasks must be a positive integer")
 
     candidates = discover_ready_tasks(db)
+    candidates, deferred = filter_candidates_by_resources(db, candidates)
     selected = candidates[:max_tasks]
 
     if not selected:
-        return []
+        return deferred
 
     plan = build_ready_task_wake_plan(db, selected)
     wake_handler = build_production_agent_wake_execution_handler(db)
 
-    return consume_dependency_wake_plan(
+    results = consume_dependency_wake_plan(
         plan,
         {
             "WAKE": wake_handler,
         },
     )
+    return list(results) + list(deferred)
 
 
 def dispatch_production_ready_tasks(db):

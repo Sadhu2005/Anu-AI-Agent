@@ -60,11 +60,16 @@ the next version.
 | [V0.6.4](versions/v0.6.4.md) | Project intelligence | Frozen | tag `v0.6.4` |
 | [V0.6.5](versions/v0.6.5.md) | Verification / evaluation | Frozen | tag `v0.6.5` |
 
+### In progress
+
+| Version | Title | Status |
+|---|---|---|
+| [V0.6.6](versions/v0.6.6.md) | Resource-aware intelligence | Step 1 (portable) |
+
 ### Planned
 
 | Version | Title |
 |---|---|
-| [V0.6.6](versions/v0.6.6.md) | Resource-aware intelligence |
 | [V0.6.7](versions/v0.6.7.md) | Human approval boundary |
 | [V0.6.8](versions/v0.6.8.md) | Long-running agent |
 | [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening |

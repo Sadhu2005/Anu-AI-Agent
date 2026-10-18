@@ -28,10 +28,10 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.6.5 frozen (tag `v0.6.5`); branch **`v0.6.5-integration`** |
-| **Proven** | V0.5.9–V0.6.4 as before; V0.6.5 ACCEPT gate + Pi live id=1 |
-| **Maturity** | V0.6.4 **100%** · V0.6.5 **100%** |
-| **Next** | Resource-aware intelligence (V0.6.6) |
+| **Version** | V0.6.6 in progress; branch **`v0.6.6-integration`** (V0.6.5 frozen) |
+| **Proven** | V0.5.9–V0.6.5 as before; V0.6.6 portable resource policy |
+| **Maturity** | V0.6.5 **100%** · V0.6.6 **~40%** (Pi evidence pending) |
+| **Next** | Pi consistency + Guardian evidence, then freeze V0.6.6 |
 | **Then** | V0.6.7 approval → V0.7.0 agent runtime |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.

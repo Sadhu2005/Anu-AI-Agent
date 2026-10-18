@@ -30,7 +30,45 @@ def load_policy():
         return yaml.safe_load(f) or {}
 
 
-POLICY = load_policy()
+def _overlay_host_safety_from_resource_policy(policy):
+    """V0.6.6: align host_safety / heavy thresholds with authoritative file."""
+    try:
+        import importlib.util
+        for candidate in (
+            BASE / "bin" / "anu-resource-policy-v0.1.py",
+            Path(__file__).resolve().parent / "anu-resource-policy-v0.1.py",
+        ):
+            if not candidate.is_file():
+                continue
+            spec = importlib.util.spec_from_file_location(
+                "anu_resource_policy_v0_1_governor",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            auth = mod.load_resource_policy()
+            safety = policy.setdefault("host_safety", {})
+            safety["warning_temperature_c"] = auth["warning_celsius"]
+            safety["pause_temperature_c"] = auth["pause_celsius"]
+            safety["minimum_free_disk_gb"] = auth["minimum_free_gb"]
+            safety["minimum_free_ram_mb"] = auth["minimum_free_ram_mb"]
+            budget = policy.setdefault("anu_budget", {})
+            budget["maximum_ram_mb"] = auth["max_memory_mb"]
+            budget["maximum_cpu_percent"] = auth["max_cpu_percent"]
+            execution = policy.setdefault("execution", {})
+            execution["heavy_workload_ram_threshold_mb"] = auth[
+                "heavy_workload_ram_threshold_mb"
+            ]
+            execution["heavy_workload_cpu_threshold_percent"] = auth[
+                "heavy_workload_cpu_threshold_percent"
+            ]
+            break
+    except Exception:
+        pass
+    return policy
+
+
+POLICY = _overlay_host_safety_from_resource_policy(load_policy())
 
 
 def read_memory():

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import importlib.util
 import json
 import os
 import shutil
@@ -12,14 +13,31 @@ from pathlib import Path
 import yaml
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 CONFIG_FILE = BASE / "config" / "anu-resources.yaml"
 DB_FILE = BASE / "brain" / "anu-brain.db"
+_HERE = Path(__file__).resolve().parent
 
 
 def load_config():
     with CONFIG_FILE.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def _load_resource_policy_mod():
+    for candidate in (
+        BASE / "bin" / "anu-resource-policy-v0.1.py",
+        _HERE / "anu-resource-policy-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_resource_policy_v0_1_guardian",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    return None
 
 
 def read_cpu_times():
@@ -138,41 +156,48 @@ def read_uptime():
     return round(seconds, 2)
 
 
-def determine_status(config, memory, temperature, disk):
-    resources = config.get("resource_policy", {})
+def determine_status(config, memory, temperature, disk, previous_status=None):
+    """Host status with V0.6.6 temperature hysteresis via resource policy."""
+    policy_mod = _load_resource_policy_mod()
+    if policy_mod is not None:
+        # Prefer authoritative loader; fall back to inline config keys.
+        try:
+            policy = policy_mod.load_resource_policy()
+        except Exception:
+            policy = None
+        if policy is not None:
+            return policy_mod.determine_host_status(
+                policy,
+                memory_available_mb=memory["available_mb"],
+                temperature_c=temperature,
+                disk_free_gb=disk["free_gb"],
+                previous_status=previous_status,
+            )
 
+    resources = config.get("resource_policy", {})
     temp_config = resources.get("temperature", {})
     memory_config = resources.get("memory", {})
     storage_config = resources.get("storage", {})
 
-    warning_temp = float(
-        temp_config.get("warning_celsius", 65)
-    )
-
-    pause_temp = float(
-        temp_config.get("pause_celsius", 70)
-    )
-
-    emergency_memory = float(
-        memory_config.get("emergency_free_mb", 1024)
-    )
-
-    minimum_disk = float(
-        storage_config.get("minimum_free_gb", 20)
-    )
-
-    if temperature is not None and temperature >= pause_temp:
-        return "PAUSE"
+    warning_temp = float(temp_config.get("warning_celsius", 65))
+    pause_temp = float(temp_config.get("pause_celsius", 70))
+    resume_temp = float(temp_config.get("resume_celsius", 55))
+    emergency_memory = float(memory_config.get("emergency_free_mb", 1024))
+    minimum_disk = float(storage_config.get("minimum_free_gb", 20))
 
     if memory["available_mb"] < emergency_memory:
         return "PAUSE"
-
     if disk["free_gb"] < minimum_disk:
         return "PAUSE"
 
-    if temperature is not None and temperature >= warning_temp:
-        return "WARNING"
-
+    elevated = previous_status in ("WARNING", "PAUSE")
+    if temperature is not None:
+        if temperature >= pause_temp:
+            return "PAUSE"
+        if elevated and temperature >= resume_temp:
+            return "WARNING"
+        if temperature >= warning_temp:
+            return "WARNING"
     return "NORMAL"
 
 
@@ -224,6 +249,10 @@ def save_to_database(data):
 
 def main():
     config = load_config()
+    policy_mod = _load_resource_policy_mod()
+    previous = None
+    if policy_mod is not None:
+        previous = policy_mod.load_guardian_state().get("status")
 
     data = {
         "agent": "ANU",
@@ -237,6 +266,7 @@ def main():
         "disk": read_disk(),
         "load_average": list(os.getloadavg()),
         "uptime_seconds": read_uptime(),
+        "previous_status": previous,
     }
 
     data["status"] = determine_status(
@@ -244,7 +274,11 @@ def main():
         data["memory"],
         data["temperature_c"],
         data["disk"],
+        previous_status=previous,
     )
+
+    if policy_mod is not None:
+        policy_mod.save_guardian_state(data["status"])
 
     save_to_database(data)
 

@@ -40,7 +40,8 @@ V0.6.2       ████████████████████  100%
 V0.6.3       ████████████████████  100%
 V0.6.4       ████████████████████  100%
 V0.6.5       ████████████████████  100%
-V0.6.6–.9    ░░░░░░░░░░░░░░░░░░░░  0%
+V0.6.6       ████████░░░░░░░░░░░░   40%  (policy + portable tests)
+V0.6.7–.9    ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
 
@@ -90,11 +91,11 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.6.6](versions/v0.6.6.md) resource-aware intelligence.
+Finish [V0.6.6](versions/v0.6.6.md) on Pi (consistency check + Guardian
+hysteresis evidence), then freeze.
 
-V0.6.5 is frozen (tag `v0.6.5`): verification records, diff-scope,
-ACCEPT gate, Pi live evidence
-([versions/v0.6.5.md](versions/v0.6.5.md)).
+V0.6.5 is frozen (tag `v0.6.5`). V0.6.6 step 1 is on
+`v0.6.6-integration`: single resource policy, hysteresis, RUN/WAIT/DENY.
 
 ## Model gateway (separate release)
 

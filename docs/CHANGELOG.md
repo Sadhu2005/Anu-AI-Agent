@@ -3,7 +3,19 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.6.1] — 2026-10-16 · tag pending `v0.6.1`
+## [V0.6.2] — 2026-10-18 · tag `v0.6.2`
+
+Capabilities: policy-checked, audited invoke through the registry and gateway.
+
+- Capability registry over gateway allow-list + execution profiles
+- `evaluate_request` / deny audit (`CAPABILITY_*`); `invoke` → gateway `run`
+- V0.6.1b boundary hardening (paths, hardened host git, FK `db_connect`,
+  audit drop stderr, sandboxd) + review P0 plan/freeze/superseded fixes
+- YAML↔`COMMANDS` drift assert; `filesystem.write` deferred
+- Portable regression 9/9; Pi live: `git.status` hardened invoke + denials
+- Known follow-up: agent admission/runtime → registry adapter
+
+## [V0.6.1] — 2026-10-16 · tag `v0.6.1`
 
 Goal → Plan → Task Graph: a goal expands into a dependent task graph.
 

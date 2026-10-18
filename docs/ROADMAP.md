@@ -35,8 +35,8 @@ V0.5.8       ████████████████████  100%
 V0.5.9       ████████████████████  100%
 V0.6.0       ████████████████████  100%
 V0.6.1       ████████████████████  100%
-V0.6.1b      ████████████████████  hardening (on v0.6.2-integration)
-V0.6.2       ████████░░░░░░░░░░░░  ~40% (registry, invoke, P0/P1 tests)
+V0.6.1b      ████████████████████  100% (with V0.6.2)
+V0.6.2       ████████████████████  100% (adapter follow-up deferred)
 V0.6.3–.9    ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
@@ -87,8 +87,12 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.6.2](versions/v0.6.2.md): Capabilities — policy-checked invoke through
-the registry and gateway, with V0.6.1b boundary hardening complete.
+**Agent → capability adapter** (deferred V0.6.2 exit criterion), then
+[V0.6.3](versions/v0.6.3.md) memory / observation.
+
+V0.6.2 is frozen: registry, denial audit, invoke→gateway, V0.6.1b hardening,
+portable regression, and Pi `git.status` evidence
+([versions/v0.6.2.md](versions/v0.6.2.md)).
 
 ## Model gateway (separate release)
 

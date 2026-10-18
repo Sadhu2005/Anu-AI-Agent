@@ -3,6 +3,13 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.7.5] — in progress · branch `v0.7.5-integration`
+
+Activity reports (“What did you do?”) — read-only brain assembly.
+
+- `anu-activity-report-v0.1.py`: `goal --goal-id` / `recent --limit`
+- Pack: `run_v0_7_5_regression.py`
+
 ## [V0.7.4] — 2026-10-18 · tag `v0.7.4`
 
 LLM planner prompt harden + one retry; gateway `tool_choice` pass-through.

@@ -69,6 +69,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.7.2](versions/v0.7.2.md) | Optional LLM planner | Gateway plan proposal + template fallback | V0.7.1 |
 | [V0.7.3](versions/v0.7.3.md) | LLM tool-call unwrap | Accept LM Studio envelopes for `source=llm` | V0.7.2 |
 | [V0.7.4](versions/v0.7.4.md) | Planner prompt + retry | `tool_choice=none` + one retry for live `source=llm` | V0.7.3 |
+| [V0.7.5](versions/v0.7.5.md) | Activity reports | “What did you do?” goal/recent JSON from brain | V0.7.4 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -98,8 +99,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.7.4 is frozen (tag `v0.7.4`): live LLM planning with retry works on Pi.
-Next: roadmap slice beyond the gateway/planner glue (see Beyond V0.7.0).
+[V0.7.5](versions/v0.7.5.md) activity reports on `v0.7.5-integration`.
+V0.7.4 is frozen (tag `v0.7.4`). V0.8 remains reserved for larger capability work.
 
 ## Model gateway (V0.7.1 frozen)
 

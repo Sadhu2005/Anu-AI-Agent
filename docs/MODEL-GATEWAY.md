@@ -199,8 +199,10 @@ sudo -u anu-agent python3 -B /srv/anu/bin/anu-model-client-v0.1.py chat \
 3. Create system user + key file + unit (see comments in
    `deploy/systemd/anu-model-gateway.service`).
 4. `systemctl enable --now anu-model-gateway`
-5. Confirm socket: `ls -l /run/anu-model/model.sock`
-6. Client as `anu-agent` (peercred): `anu-model-client-v0.1.py health`
+5. If status shows `200/CHDIR`, the unit WorkingDirectory was wrong — pull latest
+   unit (`WorkingDirectory=/srv/anu`) or `mkdir -p /srv/anu` and restart.
+6. Confirm socket: `ls -l /run/anu-model/model.sock`
+7. Client as `anu-agent` (peercred): `anu-model-client-v0.1.py health`
 
 `anu-agent.service` stays `PrivateNetwork=yes` — it must **not** call
 `192.168.1.13` directly; only the gateway process may.

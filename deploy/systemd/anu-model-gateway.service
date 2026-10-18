@@ -24,7 +24,8 @@ Type=simple
 User=anu-model
 Group=anu-agent
 
-WorkingDirectory=/srv/anu/home
+# Do not use /srv/anu/home — it may be missing or unreadable by anu-model (CHDIR 200).
+WorkingDirectory=/srv/anu
 Environment=ANU_BASE=/srv/anu
 
 # API key via systemd credential → file env (never commit keys).

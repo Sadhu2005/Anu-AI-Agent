@@ -663,19 +663,23 @@ def decision_to_task_outcome(decision, mutation_status=None):
 
 
 def main(argv=None):
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument("--db", default=str(DB_FILE))
+
     parser = argparse.ArgumentParser(description="ANU Verification v0.1")
     parser.add_argument("--db", default=str(DB_FILE))
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("migrate")
+    # --db accepted before or after the subcommand.
+    sub.add_parser("migrate", parents=[parent])
 
-    latest = sub.add_parser("latest")
+    latest = sub.add_parser("latest", parents=[parent])
     latest.add_argument("--task-id", type=int, required=True)
 
-    goal_p = sub.add_parser("goal-accept")
+    goal_p = sub.add_parser("goal-accept", parents=[parent])
     goal_p.add_argument("--goal-id", type=int, required=True)
 
-    eval_p = sub.add_parser("evaluate")
+    eval_p = sub.add_parser("evaluate", parents=[parent])
     eval_p.add_argument("--task-id", type=int, required=True)
     eval_p.add_argument("--attempt", type=int, required=True)
     eval_p.add_argument("--mutation-json", required=True)

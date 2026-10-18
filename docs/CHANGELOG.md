@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.6.5] — in progress · branch `v0.6.5-integration`
+## [V0.6.5] — 2026-10-18 · tag `v0.6.5`
 
 Verification / evaluation: formal ACCEPT | RETRY | ROLLBACK per attempt.
 
@@ -11,7 +11,8 @@ Verification / evaluation: formal ACCEPT | RETRY | ROLLBACK per attempt.
 - Safe Mutation: post-mutation digests + diff-scope before COMMIT
 - Task engine: COMPLETE only with ACCEPT; decisions audited
 - Goal aggregator: completed only when every task has ACCEPT
-- Portable regression 6/6 (Pi evidence pending)
+- Pi: migrate + regression 6/6; live ACCEPT `verification_records.id=1` (task 257)
+- CI: install PyYAML for portable tests
 
 ## [V0.6.4] — 2026-10-18 · tag `v0.6.4`
 

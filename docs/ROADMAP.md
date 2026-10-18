@@ -39,7 +39,7 @@ V0.6.1b      ████████████████████  100% 
 V0.6.2       ████████████████████  100%
 V0.6.3       ████████████████████  100%
 V0.6.4       ████████████████████  100%
-V0.6.5       ████████░░░░░░░░░░░░   40%  (service + portable tests)
+V0.6.5       ████████████████████  100%
 V0.6.6–.9    ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
@@ -90,12 +90,11 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-Finish [V0.6.5](versions/v0.6.5.md) on Pi (migrate `0008`, regression,
-live ACCEPT evidence), then freeze.
+[V0.6.6](versions/v0.6.6.md) resource-aware intelligence.
 
-V0.6.4 is frozen (tag `v0.6.4`). V0.6.5 step 1 is on
-`v0.6.5-integration`: verification records, diff-scope before COMMIT,
-task COMPLETE gated on ACCEPT, goal acceptance.
+V0.6.5 is frozen (tag `v0.6.5`): verification records, diff-scope,
+ACCEPT gate, Pi live evidence
+([versions/v0.6.5.md](versions/v0.6.5.md)).
 
 ## Model gateway (separate release)
 

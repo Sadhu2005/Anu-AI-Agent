@@ -58,12 +58,7 @@ the next version.
 | [V0.6.2](versions/v0.6.2.md) | Capabilities | Frozen | tag `v0.6.2` |
 | [V0.6.3](versions/v0.6.3.md) | Memory / observation | Frozen | tag `v0.6.3` |
 | [V0.6.4](versions/v0.6.4.md) | Project intelligence | Frozen | tag `v0.6.4` |
-
-### In progress
-
-| Version | Title | Status |
-|---|---|---|
-| [V0.6.5](versions/v0.6.5.md) | Verification / evaluation | Step 1 (portable) |
+| [V0.6.5](versions/v0.6.5.md) | Verification / evaluation | Frozen | tag `v0.6.5` |
 
 ### Planned
 

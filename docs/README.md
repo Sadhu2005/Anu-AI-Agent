@@ -75,6 +75,7 @@ the next version.
 | [V0.7.3](versions/v0.7.3.md) | LLM tool-call unwrap | Frozen · tag `v0.7.3` |
 | [V0.7.4](versions/v0.7.4.md) | Planner prompt + retry | Frozen · tag `v0.7.4` |
 | [V0.7.5](versions/v0.7.5.md) | Activity reports | Frozen · tag `v0.7.5` |
+| [V0.7.6](versions/v0.7.6.md) | LLM-aware replan | In progress · `v0.7.6-integration` |
 
 ## Working Rules
 

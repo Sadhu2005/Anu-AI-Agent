@@ -3,6 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.7.6] — in progress · branch `v0.7.6-integration`
+
+LLM-aware goal replan via recovery (same `planner.mode` as goal-cycle).
+
+- `anu-goal-recovery-v0.1.py`: llm_optional / template_only load
+- `GOAL_REPLANNED` metadata includes `source`
+- Pack: `run_v0_7_6_regression.py`
+
 ## [V0.7.5] — 2026-10-18 · tag `v0.7.5`
 
 Activity reports (“What did you do?”) — read-only brain assembly.

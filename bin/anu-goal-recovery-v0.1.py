@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""ANU Goal Recovery v0.1 (V0.6.1 step 6).
+"""ANU Goal Recovery v0.1 (V0.6.1 step 6; V0.7.6 LLM replan).
 
 When a goal's task graph fails, either:
 
 - **block** the goal with a recorded reason (and retire open tasks), or
-- **replan** the goal (retire open tasks, expand a new template plan version).
+- **replan** the goal (retire open tasks, expand a new plan version).
 
-Does not invent schema. Uses goals, tasks, goal_plans, task_execution_specs,
-and agent_events already present.
+V0.7.6: replan uses the same planner.mode switch as goal-cycle
+(``llm_optional`` → LLM planner with template fallback; ``template_only`` →
+template). Does not invent schema.
 """
 
 from __future__ import annotations
@@ -84,6 +85,8 @@ def _load(name, module_name):
         raise RuntimeError(f"Unable to load module: {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    if hasattr(module, "BASE"):
+        module.BASE = BASE
     return module
 
 
@@ -98,7 +101,32 @@ def _load_plan_service():
     )
 
 
+def _planner_mode() -> str:
+    """Read planner.mode from model-gateway config (default llm_optional)."""
+    for candidate in (
+        BASE / "config" / "anu-model-gateway.yaml",
+        _HERE.parent / "config" / "anu-model-gateway.yaml",
+    ):
+        if not candidate.is_file():
+            continue
+        try:
+            import yaml  # type: ignore
+
+            data = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
+            mode = ((data.get("planner") or {}).get("mode"))
+            if mode in ("llm_optional", "template_only"):
+                return mode
+        except Exception:
+            pass
+    return "llm_optional"
+
+
 def _load_planner():
+    """V0.7.6: LLM planner when mode=llm_optional; else template."""
+    if _planner_mode() == "llm_optional":
+        llm_name = "anu-llm-planner-v0.1.py"
+        if _module_path(llm_name).is_file():
+            return _load(llm_name, "anu_llm_planner_v076_recovery")
     return _load(
         "anu-template-planner-v0.1.py",
         "anu_template_planner_v0_1_recovery",
@@ -352,6 +380,9 @@ def replan_goal(
         plan_id=plan_id,
     )
 
+    source = expansion.get("source") or "template"
+    plan_template = expansion.get("template") or template_name
+
     _emit_goal_event(
         db,
         goal_id,
@@ -364,7 +395,8 @@ def replan_goal(
             "retired_task_ids": [r["task_id"] for r in retired],
             "new_plan_id": expansion["plan"]["plan_id"],
             "new_plan_version": expansion["plan"]["version"],
-            "template": template_name,
+            "template": plan_template,
+            "source": source,
             "policy": "replan",
         },
     )
@@ -376,6 +408,7 @@ def replan_goal(
         "task_id": task_id,
         "retired": retired,
         "expansion": expansion,
+        "source": source,
     }
 
 

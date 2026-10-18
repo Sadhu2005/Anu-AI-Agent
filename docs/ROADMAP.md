@@ -45,6 +45,7 @@ V0.6.7       ████████████████████  100%
 V0.6.8       ████████████████████  100%
 V0.6.9       ████████████████████  100%
 V0.7.0       ████████████████████  100%
+V0.7.1       ████░░░░░░░░░░░░░░░░   20%  (model gateway docs + scaffold)
 ```
 
 
@@ -64,6 +65,7 @@ V0.7.0       ████████████████████  100%
 | [V0.6.8](versions/v0.6.8.md) | Long-running agent | Survives reboot, crash, partial execution and resumes | V0.6.0 |
 | [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening (security release) | Security gaps G1–G3 closed with evidence, consistency, failure injection; feature freeze | all V0.6.x |
 | [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Goal → plan → execute → verify → remember, as one system | V0.6.9 |
+| [V0.7.1](versions/v0.7.1.md) | Model gateway | OpenAI-compatible LLM via gateway; LM Studio / cloud by config | V0.7.0 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -93,18 +95,17 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-Post-V0.7.0: model gateway as its own release; V0.8+ per [VISION.md](VISION.md).
+[V0.7.1](versions/v0.7.1.md) model gateway: LM Studio on LAN or any
+OpenAI-compatible cloud by switching `base_url` / `model` / API key
+([MODEL-GATEWAY.md](MODEL-GATEWAY.md)).
 
-V0.7.0 is frozen (tag `v0.7.0`): goal spine + remember + production gate;
-Pi regression 8/8, failure injection 6/6, heartbeat running
-([versions/v0.7.0.md](versions/v0.7.0.md)).
+V0.7.0 is frozen (tag `v0.7.0`). V0.7.1 step 1 is on `v0.7.1-integration`.
 
-## Model gateway (separate release)
+## Model gateway (this release = V0.7.1)
 
-The API-first **`anu-model-gateway`** service ([MODEL-STRATEGY.md](MODEL-STRATEGY.md),
-ADR-011) remains **its own release** after [V0.6.5](versions/v0.6.5.md) /
-[V0.6.7](versions/v0.6.7.md) capability and approval work — not bundled into
-those version tags (review §8).
+API-first **`anu-model-gateway`** ([MODEL-STRATEGY.md](MODEL-STRATEGY.md),
+ADR-011 accepted). Provider protocol is OpenAI-compatible so LM Studio and
+cloud keys are config changes, not architecture changes.
 
 ## Beyond V0.7.0
 

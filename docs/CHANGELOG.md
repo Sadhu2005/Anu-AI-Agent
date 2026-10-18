@@ -3,6 +3,15 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.7.1] — in progress · branch `v0.7.1-integration`
+
+Model gateway (OpenAI-compatible): LM Studio / cloud by config + API key.
+
+- Docs: [MODEL-GATEWAY.md](MODEL-GATEWAY.md), [versions/v0.7.1.md](versions/v0.7.1.md)
+- Config: `config/anu-model-gateway.yaml` (no secrets)
+- Gateway: `bin/anu-model-gateway-v0.1.py` (`health` / `chat` / `reason`)
+- ADR-011 accepted; draft `deploy/systemd/anu-model-gateway.service`
+
 ## [V0.7.0] — 2026-10-18 · tag `v0.7.0`
 
 Real ANU agent runtime (integration of V0.6.x).

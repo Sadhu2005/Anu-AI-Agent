@@ -28,11 +28,11 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.7.0 frozen (tag `v0.7.0`); branch **`v0.7.0-integration`** |
-| **Proven** | V0.5.9–V0.6.9 as before; V0.7.0 runtime spine + remember + gates on Pi |
-| **Maturity** | V0.6.9 **100%** · V0.7.0 **100%** |
-| **Next** | Model gateway (separate release) · V0.8+ per vision |
-| **Then** | Capability / goal-level autonomy direction |
+| **Version** | V0.7.1 in progress; branch **`v0.7.1-integration`** (V0.7.0 frozen) |
+| **Proven** | V0.5.9–V0.7.0 as before; model gateway scaffold + OpenAI-compatible config |
+| **Maturity** | V0.7.0 **100%** · V0.7.1 **~20%** |
+| **Next** | Point gateway at LM Studio (LAN) or cloud; socket + planner wiring |
+| **Then** | V0.8+ per vision |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
 

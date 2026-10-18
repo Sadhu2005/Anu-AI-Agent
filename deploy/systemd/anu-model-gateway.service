@@ -1,0 +1,59 @@
+# ANU Model Gateway (V0.7.1) — draft unit for step 2.
+# Agent stays PrivateNetwork; this service alone reaches the model provider.
+# Install later: copy to /etc/systemd/system/, create user anu-model, socket dir.
+
+[Unit]
+Description=ANU Model Gateway (OpenAI-compatible)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/anu/config/anu-model-gateway.yaml
+ConditionPathExists=/srv/anu/bin/anu-model-gateway-v0.1.py
+
+[Service]
+Type=simple
+# Prefer a dedicated user in step 2; root/agent must not share identity.
+# User=anu-model
+# Group=anu-model
+
+WorkingDirectory=/srv/anu/home
+Environment=ANU_BASE=/srv/anu
+# Local LM Studio: any non-empty bearer is fine. Cloud: set real key via
+# LoadCredential and point ANU_MODEL_API_KEY_FILE at it — never commit keys.
+Environment=ANU_MODEL_API_KEY=lm-studio
+# LoadCredential=model_api_key:/etc/anu/model-api-key
+# Environment=ANU_MODEL_API_KEY_FILE=%d/model_api_key
+
+# Step 1 smoke: oneshot CLI is used from tests. Step 2 will run a socket server.
+# For now this unit documents the hardened shape; ExecStart may become a
+# long-running socket listener.
+ExecStart=/usr/bin/python3 /srv/anu/bin/anu-model-gateway-v0.1.py health
+RemainAfterExit=yes
+Type=oneshot
+
+Restart=no
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+
+# Gateway needs outbound HTTP to LM Studio / cloud — NOT PrivateNetwork.
+# Still no AF_PACKET; only Unix + IP.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+ReadOnlyPaths=/srv/anu/config
+ReadOnlyPaths=/srv/anu/bin
+ReadWritePaths=/srv/anu/logs
+# StateDirectory=anu-model
+
+[Install]
+WantedBy=multi-user.target

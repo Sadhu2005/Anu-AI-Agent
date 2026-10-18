@@ -1,0 +1,41 @@
+# ANU Model Gateway — OpenAI-compatible provider config (V0.7.1).
+# NO API KEYS IN THIS FILE. Use ANU_MODEL_API_KEY or systemd credentials.
+# Switch providers by changing base_url + model (+ key elsewhere).
+# See docs/MODEL-GATEWAY.md
+
+enabled: true
+provider: openai_compatible
+
+# Default: LM Studio local loopback. On the Pi, set to your PC's LAN IP, e.g.
+#   base_url: "http://192.168.1.50:1234/v1"
+base_url: "http://127.0.0.1:1234/v1"
+model: "meta-llama-3.1-8b-instruct"
+
+# Env var name that holds the bearer token (lm-studio / sk-... / etc.)
+api_key_env: "ANU_MODEL_API_KEY"
+# Optional: if set, read key from this file path (systemd LoadCredential).
+api_key_file_env: "ANU_MODEL_API_KEY_FILE"
+
+timeout_seconds: 120
+max_tokens: 1024
+temperature: 0.2
+
+privacy:
+  default_class: INTERNAL
+  # Classes that must never be sent to a remote provider.
+  forbidden_classes:
+    - SECRET
+
+budget:
+  max_usd_per_request: 0.05
+  max_usd_per_day: 1.0
+  # Local LM Studio: treat cost as zero for accounting.
+  assume_zero_cost_hosts:
+    - "127.0.0.1"
+    - "localhost"
+    - "192.168."
+
+socket:
+  # Step 2: Unix socket path for agent → gateway.
+  path: "/run/anu-model/model.sock"
+  mode: "0660"

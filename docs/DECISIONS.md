@@ -150,11 +150,12 @@ or verification must go beyond the test suite (V0.6.5).
 
 | | |
 |---|---|
-| **Status** | Accepted |
+| **Status** | Accepted for **on-Pi local model install**; superseded for **API / OpenAI-compatible** mode by ADR-011 (V0.7.1) |
 | **Since** | 2 Oct 2026 (`anu-admission-policy.yaml`: `models.enabled: false`) |
-| **Enforced in** | Admission policy; no model runtime installed |
+| **Enforced in** | Admission policy; no on-Pi GGUF runtime installed |
 
-**Decision:** Keep model execution disabled in the current ANU runtime.
+**Decision:** Keep **on-Pi** model execution disabled in the current ANU runtime.
+Remote / LAN OpenAI-compatible providers go through the model gateway (ADR-011).
 
 **Why:** The current objective is to build and prove the autonomous execution
 substrate before introducing expensive model computation. The Pi is not treated
@@ -329,14 +330,15 @@ through the production service, even though all of its code is written.
 
 | | |
 |---|---|
-| **Status** | Proposed (target V0.6.1); will supersede ADR-004 for API mode when accepted |
-| **Since** | 5 Oct 2026 |
-| **Enforced in** | not yet implemented; see [MODEL-STRATEGY.md](MODEL-STRATEGY.md) section 37 |
+| **Status** | Accepted (V0.7.1 in progress); supersedes ADR-004 for **API / OpenAI-compatible** mode |
+| **Since** | 5 Oct 2026 · accepted 18 Oct 2026 |
+| **Enforced in** | `bin/anu-model-gateway-v0.1.py`, `config/anu-model-gateway.yaml`; Unix socket systemd hardening in V0.7.1 step 2 |
 
-**Decision:** ANU gets intelligence from an API model first (reference:
-OpenAI `gpt-6-luna`, configurable), reached only through a separate
-`anu-model-gateway` service over a Unix socket. The agent itself stays
-network-isolated. Local models come later, in their own service and slice.
+**Decision:** ANU gets intelligence from an **OpenAI-compatible** HTTP API
+(LM Studio on LAN, OpenAI cloud, or any `/v1` server), reached only through a
+separate `anu-model-gateway`. Switch providers by `base_url` + `model` + API
+key — not by forking code. The agent itself stays network-isolated. On-Pi local
+GGUF models come later, in their own service and slice.
 
 **Why:** a capable local model does not fit in ANU's 3 GB agent budget on an
 8 GB Pi. API inference keeps the Pi focused on state, execution,
@@ -348,13 +350,16 @@ privacy class, redaction, and response validation.
 > inherit ANU's permissions.
 
 **Trade-offs:** introduces the first network-capable ANU component and an
-external dependency; prompts leave the Pi (OpenAI abuse-monitoring logs keep
-them up to 30 days by default); recurring cost, capped by ANU budgets ($1/day,
-$5/month) and a provider-side limit.
+external dependency. With LM Studio on LAN, prompts stay on the home network.
+With cloud providers, prompts leave the Pi (provider retention policies apply);
+recurring cost is capped by ANU budgets ($1/day, $5/month) and a provider-side
+limit.
 
-**Revisit when:** a local model passes the memory, latency, quality, failure,
-resource-governance, and privacy tests (V0.8–V0.9), or pricing or data
+**Revisit when:** an on-Pi local model passes the memory, latency, quality,
+failure, resource-governance, and privacy tests (V0.8–V0.9), or pricing or data
 policy changes.
+
+**See also:** [MODEL-GATEWAY.md](MODEL-GATEWAY.md), [versions/v0.7.1.md](versions/v0.7.1.md).
 
 ---
 

@@ -15,6 +15,7 @@ the next version.
 | [WHY.md](WHY.md) | Why ANU is built safety-first, and the principles that follow |
 | [DESIGN-PHILOSOPHY.md](DESIGN-PHILOSOPHY.md) | Time-rich, compute-constrained: why ANU runs slowly and safely on a Raspberry Pi |
 | [MODEL-STRATEGY.md](MODEL-STRATEGY.md) | How intelligence plugs in: API-first model gateway, budget, privacy, local models later |
+| [MODEL-GATEWAY.md](MODEL-GATEWAY.md) | Operator guide: LM Studio / cloud switch via base_url + API key |
 | [VISION.md](VISION.md) | What ANU becomes after V0.7.0: direction from V0.8 to V1.0 |
 | [DECISIONS.md](DECISIONS.md) | Architecture decision log: what was decided, why, and at what cost |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Current execution chain and target V0.7.0 architecture |
@@ -64,6 +65,12 @@ the next version.
 | [V0.6.8](versions/v0.6.8.md) | Long-running agent | Frozen | tag `v0.6.8` |
 | [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening | Frozen | tag `v0.6.9` |
 | [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Frozen | tag `v0.7.0` |
+
+### In progress
+
+| Version | Title | Status |
+|---|---|---|
+| [V0.7.1](versions/v0.7.1.md) | Model gateway | Step 1 (docs + scaffold) |
 
 ## Working Rules
 

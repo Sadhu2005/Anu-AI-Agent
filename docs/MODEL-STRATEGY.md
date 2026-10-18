@@ -13,8 +13,8 @@ Raspberry Pi.
 
 | | |
 |---|---|
-| **Status** | Proposed: models are still disabled ([ADR-004](DECISIONS.md)); this strategy is [ADR-011](DECISIONS.md) |
-| **Applies from** | [V0.6.1](versions/v0.6.1.md) |
+| **Status** | ADR-011 accepted; gateway implementing in [V0.7.1](versions/v0.7.1.md) ([MODEL-GATEWAY.md](MODEL-GATEWAY.md)) |
+| **Applies from** | V0.7.1 (planned since V0.6.1); template planner remains fallback |
 | **Prices checked** | 5 Oct 2026 (see References) |
 
 ---
@@ -648,21 +648,20 @@ but:
 
 ## 37. What Must Change to Enable This
 
-Nothing below exists yet. Enabling models is a security-boundary change and
-follows [SECURITY.md](SECURITY.md) section 17.
+Enabling models is a security-boundary change ([SECURITY.md](SECURITY.md)).
+Progress is tracked in [V0.7.1](versions/v0.7.1.md).
 
-1. Accept [ADR-011](DECISIONS.md) and mark ADR-004 as superseded for API
-   mode.
-2. Add `anu-model-gateway.py` and its unit in `deploy/systemd/`, with tests
-   for the socket peer check, budget, redaction, and privacy-class
-   enforcement.
-3. Add a `model_gateway` section to config (provider, model, budgets, token
-   caps); keep `models.enabled` for **local** model installation.
-4. Store the provider key with `LoadCredential=`. Set a provider-side monthly
-   limit.
-5. Add the model usage table to the brain and [DATABASE.md](DATABASE.md).
-6. Keep the V0.6.1 planner working **without** the model (rule/template
-   based), so a model outage only degrades planning quality.
+1. [x] Accept [ADR-011](DECISIONS.md) for OpenAI-compatible / API mode
+       (ADR-004 remains for **on-Pi** local model install until later).
+2. [~] Add `anu-model-gateway-v0.1.py` + draft systemd unit; socket peer check
+       and full hardening = V0.7.1 step 2.
+3. [x] Config: `config/anu-model-gateway.yaml` (`base_url`, `model`, budgets).
+4. [~] API key via env / `LoadCredential=` (documented; Pi install in step 2).
+5. [ ] Model usage table in the brain / [DATABASE.md](DATABASE.md).
+6. [x] Keep template planner when gateway is down (V0.7.0 path unchanged).
+
+**Provider switch:** same gateway binary; change `base_url` + `model` + API key
+to move between LM Studio (LAN) and cloud OpenAI-compatible hosts.
 
 ---
 

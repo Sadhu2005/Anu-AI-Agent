@@ -3,6 +3,19 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.6.1] — 2026-10-16 · tag pending `v0.6.1`
+
+Goal → Plan → Task Graph: a goal expands into a dependent task graph.
+
+- Agent admission: ineligible pending tasks are blocked alone (`contract`);
+  the scheduler cycle continues
+- Goal service CRUD on the existing `goals` table
+- Versioned `goal_plans` (`AgentPlan` JSON); new active plan supersedes
+- Template planner `improve_sandbox` → 6 chained tasks + execution specs
+- Goal status derived from the task graph (aggregator)
+- Failure policies: `block` or `replan` with recorded reason/events
+- Regression 6/6; live evidence on Pi (goal 6 readiness chain; goal 7 block)
+
 ## [V0.6.0] — 2026-10-16 · tag `v0.6.0`
 
 Reliable autonomous execution: crash, kill, and reboot mid-mutation no
@@ -20,8 +33,8 @@ longer leave a project half-changed.
 - Live evidence on the Pi: restart and reboot complete gracefully; kill
   and forced reboot roll back or leave untouched, then retry once
 - Nine V0.6.0 test files (38 cases); full regression 52 files on deploy
-- Known follow-up: a goal-less pending task fails the whole scheduler
-  cycle (admission hardening, outside this version)
+- Known follow-up (closed in V0.6.1): a goal-less pending task failed the
+  whole scheduler cycle — fixed by agent admission
 
 ## [V0.5.9] — 2026-10-05 · tag `v0.5.9`
 

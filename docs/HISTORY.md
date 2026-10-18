@@ -186,6 +186,7 @@ Summarised in [CHANGELOG.md](CHANGELOG.md), in full detail in
 | 5 Oct 04:56 | V0.5.9 | **First autonomous COMMITTED mutation** (task 186) and verified rollback (task 187) by the production service; 42 / 42 regression; frozen |
 | 15 Oct | V0.6.0 | Graceful stop, write-ahead transactions, recovery under execution lock, interrupted-only retry; steps 1–4 deployed |
 | 15–16 Oct | V0.6.0 | Live evidence: restart and reboot complete mid-mutation; kill and forced reboot recover and retry once (tasks 224–227) |
+| 16 Oct | V0.6.1 | Goal → Plan → Task Graph: admission, goals/plans, template expand, aggregator, recovery; regression 6/6; live goals 6–7 |
 
 (Git times are Pi local time, UTC+1. All other times in this document are UTC.)
 

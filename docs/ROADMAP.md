@@ -105,8 +105,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.4 (recovery visibility in activity reports) is in progress on
-`v0.8.4-integration`. V0.8.3 remains frozen (tag `v0.8.3`).
+V0.8.4 (recovery visibility in activity reports) is frozen (tag `v0.8.4`).
+Next slice is open — pick from VISION / ROADMAP when ready.
 
 ## Model gateway (V0.7.1 frozen)
 

@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.8.4] — 2026-10-18 · branch `v0.8.4-integration`
+## [V0.8.4] — 2026-10-19 · tag `v0.8.4`
 
 Recovery visibility in activity reports (`TASK_RECOVERY_POLICY`).
 
@@ -11,7 +11,7 @@ Recovery visibility in activity reports (`TASK_RECOVERY_POLICY`).
 - Project reports: `recovery_policy_event_count` / `latest_recovery_action`
 - Memory `recovery:*` tags surfaced when present
 - Pack: `run_v0_8_4_regression.py`
-- Pi smoke pending before freeze tag `v0.8.4`
+- Pi: pack PASS; goal 13 `recovery.latest.action=retry`
 
 ## [V0.8.3] — 2026-10-18 · tag `v0.8.3`
 

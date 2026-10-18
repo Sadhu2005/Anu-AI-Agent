@@ -3,6 +3,16 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.4] — 2026-10-18 · branch `v0.8.4-integration`
+
+Recovery visibility in activity reports (`TASK_RECOVERY_POLICY`).
+
+- Goal reports: enriched recovery events + `recovery` summary block
+- Project reports: `recovery_policy_event_count` / `latest_recovery_action`
+- Memory `recovery:*` tags surfaced when present
+- Pack: `run_v0_8_4_regression.py`
+- Pi smoke pending before freeze tag `v0.8.4`
+
 ## [V0.8.3] — 2026-10-18 · tag `v0.8.3`
 
 Project awareness dossier (scan + memory + open goal/task counts).

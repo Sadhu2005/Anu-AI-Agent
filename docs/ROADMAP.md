@@ -75,6 +75,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.8.1](versions/v0.8.1.md) | Verification recovery | RETRY/ROLLBACK → retry/wait/block/escalate | V0.8.0 |
 | [V0.8.2](versions/v0.8.2.md) | Richer planning | `multi_stage_goal` default expand graph | V0.8.1 |
 | [V0.8.3](versions/v0.8.3.md) | Project awareness | Project dossier for plan + reports | V0.8.2 |
+| [V0.8.4](versions/v0.8.4.md) | Recovery report glue | Activity reports show TASK_RECOVERY_POLICY | V0.8.3 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -104,8 +105,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.3 is frozen (tag `v0.8.3`): project dossier for plan + reports.
-Next: further V0.8 capability slices (VISION), or pause.
+V0.8.4 (recovery visibility in activity reports) is in progress on
+`v0.8.4-integration`. V0.8.3 remains frozen (tag `v0.8.3`).
 
 ## Model gateway (V0.7.1 frozen)
 

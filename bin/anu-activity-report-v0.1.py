@@ -198,6 +198,41 @@ def _list_goal_tasks(db, goal_id):
     return out
 
 
+RECOVERY_EVENT_TYPE = "TASK_RECOVERY_POLICY"
+
+
+def _parse_event_metadata(raw):
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _recovery_from_metadata(meta):
+    """Extract compact recovery fields from TASK_RECOVERY_POLICY metadata."""
+    if not isinstance(meta, dict):
+        return None
+    action = meta.get("action") or meta.get("recovery_action")
+    if not action and not meta.get("reason"):
+        return None
+    return {
+        "action": action,
+        "reason": meta.get("reason"),
+        "failure_class": meta.get("failure_class"),
+        "retry_after": meta.get("retry_after"),
+        "retry_after_minutes": meta.get("retry_after_minutes"),
+        "decision": meta.get("decision"),
+        "verification_id": meta.get("verification_id"),
+    }
+
+
 def _list_goal_events(db, goal_id, *, limit=DEFAULT_EVENT_LIMIT):
     db = _require_db(db)
     if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
@@ -218,14 +253,87 @@ def _list_goal_events(db, goal_id, *, limit=DEFAULT_EVENT_LIMIT):
     for row in rows:
         if isinstance(row, sqlite3.Row):
             row = dict(row)
-        out.append({
+        item = {
             "id": row["id"],
             "event_type": row.get("event_type"),
             "message": row.get("message"),
             "created_at": row.get("created_at"),
             "task_id": row.get("task_id"),
-        })
+        }
+        if row.get("event_type") == RECOVERY_EVENT_TYPE:
+            meta = _parse_event_metadata(row.get("metadata"))
+            recovery = _recovery_from_metadata(meta)
+            if recovery is not None:
+                item["recovery"] = recovery
+        out.append(item)
     return out
+
+
+def _load_observation_memory():
+    try:
+        return _load_module(
+            _module_path("anu-observation-memory-v0.1.py"),
+            "anu_observation_memory_v084_report",
+        )
+    except Exception:
+        return None
+
+
+def _memory_recovery_tags(db, project_key, *, limit=20):
+    """Best-effort collect recovery:* tags from active project memories."""
+    if not isinstance(project_key, str) or not project_key.strip():
+        return []
+    mem = _load_observation_memory()
+    if mem is None:
+        return []
+    try:
+        if hasattr(mem, "migrate"):
+            mem.migrate(db)
+        memories = mem.list_active_memories(
+            db, project_key=project_key.strip(), limit=limit
+        )
+    except Exception:
+        return []
+    tags = []
+    seen = set()
+    for memory in memories or []:
+        for tag in memory.get("tags") or []:
+            if (
+                isinstance(tag, str)
+                and tag.startswith("recovery:")
+                and tag not in seen
+            ):
+                seen.add(tag)
+                tags.append(tag)
+    return tags
+
+
+def _recovery_summary_from_events(events, *, memory_recovery_tags=None):
+    """Build goal-level recovery block from enriched events + memory tags."""
+    policy_events = [
+        e for e in (events or [])
+        if e.get("event_type") == RECOVERY_EVENT_TYPE and e.get("recovery")
+    ]
+    actions = []
+    seen_actions = set()
+    for event in policy_events:
+        action = (event.get("recovery") or {}).get("action")
+        if isinstance(action, str) and action and action not in seen_actions:
+            seen_actions.add(action)
+            actions.append(action)
+    latest = None
+    if policy_events:
+        top = policy_events[0]
+        latest = dict(top.get("recovery") or {})
+        latest["task_id"] = top.get("task_id")
+        latest["created_at"] = top.get("created_at")
+        latest["event_id"] = top.get("id")
+    return {
+        "policy_event_count": len(policy_events),
+        "actions": actions,
+        "latest": latest,
+        "memory_recovery_tags": list(memory_recovery_tags or []),
+    }
 
 
 def _summary_from_tasks(tasks, events):
@@ -299,6 +407,10 @@ def report_goal(db, goal_id, *, event_limit=DEFAULT_EVENT_LIMIT):
     tasks = _list_goal_tasks(db, goal_id)
     events = _list_goal_events(db, goal_id, limit=event_limit)
     project_dossier = _dossier_best_effort(db, project_key)
+    memory_tags = _memory_recovery_tags(db, project_key)
+    recovery = _recovery_summary_from_events(
+        events, memory_recovery_tags=memory_tags
+    )
 
     return {
         "ok": True,
@@ -314,6 +426,7 @@ def report_goal(db, goal_id, *, event_limit=DEFAULT_EVENT_LIMIT):
         "tasks": tasks,
         "events": events,
         "summary": _summary_from_tasks(tasks, events),
+        "recovery": recovery,
         "project_dossier": project_dossier,
     }
 
@@ -349,6 +462,19 @@ def report_project(db, project_key, *, event_limit=DEFAULT_EVENT_LIMIT):
                 "error": f"{type(exc).__name__}: {exc}",
             })
 
+    recovery_policy_event_count = 0
+    latest_recovery_action = None
+    for goal_report in recent:
+        if not isinstance(goal_report, dict) or not goal_report.get("ok"):
+            continue
+        block = goal_report.get("recovery") or {}
+        recovery_policy_event_count += int(block.get("policy_event_count") or 0)
+        if latest_recovery_action is None:
+            latest = block.get("latest") or {}
+            action = latest.get("action")
+            if isinstance(action, str) and action:
+                latest_recovery_action = action
+
     return {
         "ok": True,
         "project_key": project_key,
@@ -360,6 +486,8 @@ def report_project(db, project_key, *, event_limit=DEFAULT_EVENT_LIMIT):
             "verification_hint_count": dossier.get("verification_hint_count"),
             "memory_repeated_failure": dossier.get("memory_repeated_failure"),
             "recent_goal_count": len(recent),
+            "recovery_policy_event_count": recovery_policy_event_count,
+            "latest_recovery_action": latest_recovery_action,
         },
     }
 

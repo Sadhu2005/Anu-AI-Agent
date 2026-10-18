@@ -3,6 +3,16 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.6.5] — in progress · branch `v0.6.5-integration`
+
+Verification / evaluation: formal ACCEPT | RETRY | ROLLBACK per attempt.
+
+- `verification_records` (`0008_v0_6_5.sql`) + `anu-verification-v0.1.py`
+- Safe Mutation: post-mutation digests + diff-scope before COMMIT
+- Task engine: COMPLETE only with ACCEPT; decisions audited
+- Goal aggregator: completed only when every task has ACCEPT
+- Portable regression 6/6 (Pi evidence pending)
+
 ## [V0.6.4] — 2026-10-18 · tag `v0.6.4`
 
 Project intelligence: registered projects get a refreshed structured model.

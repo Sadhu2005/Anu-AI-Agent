@@ -33,6 +33,7 @@ DB_FILE = BASE / "brain" / "anu-brain.db"
 SAFE_MUTATION = BASE / "bin" / "anu-safe-mutation-v0.2.py"
 TASK_GRAPH = BASE / "bin" / "anu-task-graph-v0.1.py"
 RECOVERY = BASE / "bin" / "anu-recovery-v0.1.py"
+VERIFICATION = BASE / "bin" / "anu-verification-v0.1.py"
 LOG_FILE = BASE / "logs" / "anu-task-engine.jsonl"
 EXECUTION_LOCK_FILE = BASE / "runtime" / "anu-execution.lock"
 _HERE = Path(__file__).resolve().parent
@@ -365,6 +366,51 @@ def classify_mutation(result, process_code):
     return "blocked"
 
 
+def _load_verification():
+    for candidate in (
+        VERIFICATION,
+        _HERE / "anu-verification-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_verification_v0_1_engine",
+                candidate,
+            )
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    return None
+
+
+def _verify_mutation_attempt(task_id, attempt, run_id, result):
+    """Persist verification record; gate COMPLETE on ACCEPT (V0.6.5)."""
+    verification = _load_verification()
+    if verification is None:
+        return None
+
+    task = fetch_task(task_id)
+    goal_id = None if task is None else task.get("goal_id")
+    db = db_connect()
+    try:
+        verification.migrate(db)
+        record = verification.evaluate_mutation_attempt(
+            db,
+            result,
+            task_id=task_id,
+            attempt=attempt,
+            run_id=run_id,
+            goal_id=goal_id,
+            declared_files=result.get("files"),
+            actual_changed_files=result.get("actual_changed_files"),
+            operation=result.get("operation"),
+        )
+        return record
+    finally:
+        db.close()
+
+
 @contextlib.contextmanager
 def shared_execution_lock():
     """Held while a task executes so recovery never treats it as orphaned."""
@@ -597,7 +643,77 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
         },
     )
 
-    final_status = classify_mutation(result, process.returncode)
+    verification_record = None
+    try:
+        verification_record = _verify_mutation_attempt(
+            task_id, attempt, run_id, result
+        )
+    except Exception as exc:
+        event(
+            task_id,
+            "TASK_VERIFICATION_ERROR",
+            "verification service failed",
+            {
+                "attempt": attempt,
+                "run_id": run_id,
+                "error": f"{type(exc).__name__}: {exc}",
+            },
+        )
+        verification_record = None
+
+    if verification_record is not None:
+        event(
+            task_id,
+            "TASK_VERIFICATION",
+            f"verification {verification_record.get('decision')}",
+            {
+                "attempt": attempt,
+                "run_id": run_id,
+                "verification_id": verification_record.get("id"),
+                "decision": verification_record.get("decision"),
+                "transaction_id": result.get("transaction_id"),
+            },
+        )
+        verification = _load_verification()
+        outcome = verification.decision_to_task_outcome(
+            verification_record["decision"],
+            mutation_status=result.get("status"),
+        )
+        # COMPLETE only with ACCEPT (exit criterion).
+        if outcome["task_status"] == "completed":
+            gate_db = db_connect()
+            try:
+                verification.require_accept_for_complete(
+                    gate_db, task_id, attempt=attempt
+                )
+            except Exception as exc:
+                outcome = {
+                    "task_status": "blocked",
+                    "failure_class": "integrity",
+                    "retryable": False,
+                }
+                event(
+                    task_id,
+                    "TASK_BLOCKED",
+                    "COMPLETE refused without ACCEPT verification",
+                    {
+                        "attempt": attempt,
+                        "run_id": run_id,
+                        "error": str(exc),
+                    },
+                )
+            finally:
+                gate_db.close()
+        final_status = outcome["task_status"]
+        failure_class = outcome.get("failure_class")
+    else:
+        # Verification module missing: keep legacy classify (pre-V0.6.5).
+        final_status = classify_mutation(result, process.returncode)
+        failure_class = (
+            FAILURE_CLASSES["ROLLED_BACK"]
+            if final_status == "failed"
+            else FAILURE_CLASSES.get(result.get("status"), "integrity")
+        )
 
     if final_status == "completed":
         update_task(task_id, status="completed")
@@ -613,6 +729,16 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "baseline_ok": result.get("baseline_ok"),
                 "mutation_test_ok": result.get("mutation_test_ok"),
                 "integrity_verified": result.get("integrity_verified"),
+                "verification_id": (
+                    None
+                    if verification_record is None
+                    else verification_record.get("id")
+                ),
+                "verification_decision": (
+                    None
+                    if verification_record is None
+                    else verification_record.get("decision")
+                ),
             },
         )
         return (
@@ -624,6 +750,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "run_id": run_id,
                 "retryable": False,
                 "mutation": result,
+                "verification": verification_record,
                 "engine_exit_code": process.returncode,
                 "engine_stderr": process.stderr[-8000:],
             },
@@ -634,7 +761,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
         update_task(
             task_id,
             status="failed",
-            failure_class=FAILURE_CLASSES["ROLLED_BACK"],
+            failure_class=failure_class or FAILURE_CLASSES["ROLLED_BACK"],
         )
 
         retryable = attempt < MAX_ATTEMPTS
@@ -647,12 +774,22 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "run_id": run_id,
                 "max_attempts": MAX_ATTEMPTS,
                 "retryable": retryable,
-                "failure_class": FAILURE_CLASSES["ROLLED_BACK"],
+                "failure_class": failure_class or FAILURE_CLASSES["ROLLED_BACK"],
                 "transaction_id": result.get("transaction_id"),
                 "mutation_status": result.get("status"),
                 "rollback_attempted": result.get("rollback_attempted"),
                 "rollback_verified": result.get("rollback_verified"),
                 "integrity_verified": result.get("integrity_verified"),
+                "verification_id": (
+                    None
+                    if verification_record is None
+                    else verification_record.get("id")
+                ),
+                "verification_decision": (
+                    None
+                    if verification_record is None
+                    else verification_record.get("decision")
+                ),
             },
         )
 
@@ -666,13 +803,15 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "retryable": retryable,
                 "remaining_attempts": max(MAX_ATTEMPTS - attempt, 0),
                 "mutation": result,
+                "verification": verification_record,
                 "engine_exit_code": process.returncode,
                 "engine_stderr": process.stderr[-8000:],
             },
             process.returncode or 1,
         )
 
-    failure_class = FAILURE_CLASSES.get(result.get("status"), "integrity")
+    if failure_class is None:
+        failure_class = FAILURE_CLASSES.get(result.get("status"), "integrity")
     update_task(task_id, status="blocked", failure_class=failure_class)
     event(
         task_id,
@@ -684,6 +823,16 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             "transaction_id": result.get("transaction_id"),
             "mutation_status": result.get("status"),
             "failure_class": failure_class,
+            "verification_id": (
+                None
+                if verification_record is None
+                else verification_record.get("id")
+            ),
+            "verification_decision": (
+                None
+                if verification_record is None
+                else verification_record.get("decision")
+            ),
         },
     )
 
@@ -696,6 +845,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             "run_id": run_id,
             "retryable": False,
             "mutation": result,
+            "verification": verification_record,
             "engine_exit_code": process.returncode,
             "engine_stderr": process.stderr[-8000:],
         },

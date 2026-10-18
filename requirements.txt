@@ -1,0 +1,2 @@
+# Host / CI Python deps for ANU (Pi uses apt python3-yaml; see docs/SETUP.md).
+PyYAML>=6.0

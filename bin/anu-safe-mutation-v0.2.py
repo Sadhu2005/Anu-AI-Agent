@@ -646,16 +646,57 @@ def run_transaction():
         tx['details']['mutation_test'] = mutation_test
         tx['mutation_test_ok'] = gateway_ok(mutation_test)
 
-        if tx['mutation_test_ok']:
+        # V0.6.5: post-mutation digests + diff-scope before COMMIT.
+        post_shas = {
+            f['path']: sha256_file(resolve_file(project, f['path']))
+            for f in files
+        }
+        tx['details']['post_mutation_sha256'] = post_shas
+        tx['details']['baseline_sha256_by_file'] = {
+            f['path']: f['baseline_sha256'] for f in files
+        }
+        for item in files:
+            item['after_sha256'] = post_shas[item['path']]
+        tx['files'] = files
+
+        actual_changed = _collect_actual_changed_files(
+            args.project, args.task_id, tx
+        )
+        tx['actual_changed_files'] = actual_changed
+        scope_ok, extras = _diff_scope_ok(
+            [f['path'] for f in files], actual_changed
+        )
+        intended_ok = all(
+            post_shas[f['path']] != f['baseline_sha256'] for f in files
+        )
+        tx['details']['verification_scope'] = {
+            'scope_ok': scope_ok,
+            'extras': extras,
+            'intended_ok': intended_ok,
+        }
+
+        if tx['mutation_test_ok'] and scope_ok and intended_ok:
             tx['status'] = 'COMMITTED'
             tx['integrity_verified'] = True
             checkpoint_event(transaction_id, args.task_id, 'POST_MUTATION',
-                             'COMMITTED', {'files': [f['path'] for f in files]})
+                             'COMMITTED', {
+                                 'files': [f['path'] for f in files],
+                                 'actual_changed_files': actual_changed,
+                             })
             return finalize(tx, 0)
+
+        # Tests failed, unintended change, or no intended change → rollback.
+        if tx['mutation_test_ok'] and (not scope_ok or not intended_ok):
+            tx['details']['rollback_reason'] = (
+                'unintended_change' if not scope_ok else 'no_intended_change'
+            )
 
         tx['rollback_attempted'] = True
         checkpoint_event(transaction_id, args.task_id, 'ROLLBACK',
-                         'ROLLBACK_STARTED', {})
+                         'ROLLBACK_STARTED', {
+                             'reason': tx['details'].get('rollback_reason'),
+                             'extras': extras,
+                         })
         rollback_files(files, project)
 
         rollback_shas = {f['path']: sha256_file(resolve_file(project, f['path'])) for f in files}
@@ -694,15 +735,76 @@ def run_transaction():
         return finalize(tx, 10)
 
 
+def _collect_actual_changed_files(project_name, task_id, tx):
+    """Best-effort working-tree change list via git status --short."""
+    try:
+        payload = run_gateway(project_name, 'git_status_short', task_id)
+    except Exception as exc:
+        tx['details']['git_status_short_error'] = str(exc)
+        return None
+    tx['details']['git_status_short'] = payload
+    stdout = ''
+    if isinstance(payload, dict):
+        result = payload.get('result')
+        if isinstance(result, dict):
+            stdout = result.get('stdout') or ''
+        if not stdout:
+            stdout = payload.get('stdout') or ''
+        nested = payload.get('payload')
+        if not stdout and isinstance(nested, dict):
+            stdout = nested.get('stdout') or ''
+    return _parse_git_status_short(stdout)
+
+
+def _parse_git_status_short(stdout):
+    paths = []
+    if not stdout:
+        return paths
+    for line in str(stdout).splitlines():
+        if not line.strip():
+            continue
+        body = line[3:] if len(line) >= 3 and line[2] == ' ' else line.strip()
+        if ' -> ' in body:
+            body = body.split(' -> ', 1)[1]
+        body = body.strip().strip('"')
+        if body:
+            paths.append(body.replace('\\', '/'))
+    return paths
+
+
+def _diff_scope_ok(declared_files, actual_changed_files):
+    if actual_changed_files is None:
+        # No listing available (non-git workspace): Safe Mutation only
+        # wrote declared files, so scope is OK.
+        return True, []
+    declared = {str(p).replace('\\', '/') for p in declared_files}
+    extras = sorted(
+        p for p in actual_changed_files
+        if str(p).replace('\\', '/') not in declared
+    )
+    return len(extras) == 0, extras
+
+
 def finalize(tx, code):
     tx['completed_at'] = now_iso()
     persist(tx)
+    file_records = []
+    for f in tx['files']:
+        if isinstance(f, dict):
+            file_records.append({
+                'path': f.get('path'),
+                'baseline_sha256': f.get('baseline_sha256'),
+                'after_sha256': f.get('after_sha256'),
+            })
     print(json.dumps({
         'ok': tx['status'] in {'COMMITTED', 'ALREADY_COMMITTED', 'ROLLED_BACK'},
         'transaction_id': tx['transaction_id'],
         'idempotency_key': tx.get('idempotency_key'),
         'project': tx['project'],
+        'operation': tx.get('operation'),
         'files': [f['path'] for f in tx['files']],
+        'file_records': file_records,
+        'actual_changed_files': tx.get('actual_changed_files'),
         'status': tx['status'],
         'baseline_ok': tx['baseline_ok'],
         'mutation_test_ok': tx['mutation_test_ok'],

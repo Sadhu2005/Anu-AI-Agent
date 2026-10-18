@@ -160,11 +160,32 @@ def derive_goal_status(task_statuses):
     return "active"
 
 
+def _load_verification():
+    for candidate in (
+        BASE / "bin" / "anu-verification-v0.1.py",
+        _HERE / "anu-verification-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_verification_v0_1_aggregator",
+                candidate,
+            )
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    return None
+
+
 def sync_goal_status(db, goal_id, force=False):
     """Recompute goal status from its tasks and persist if it changes.
 
     Returns a summary dict including ``derived``, ``changed``, and
     ``task_summary``.
+
+    V0.6.5: a goal only becomes ``completed`` when every task has a
+    latest ACCEPT verification record (goal-level acceptance).
     """
     db = _require_db(db)
     goals = _load_goal_service()
@@ -174,6 +195,20 @@ def sync_goal_status(db, goal_id, force=False):
 
     tasks = list_goal_task_statuses(db, goal_id)
     derived = derive_goal_status(tasks)
+    verification_record = None
+
+    if derived == TERMINAL_SUCCESS:
+        verification = _load_verification()
+        if verification is not None:
+            try:
+                verification.migrate(db)
+                verification_record = verification.evaluate_goal_acceptance(
+                    db, goal_id, persist=True
+                )
+                if not verification_record.get("goal_ok"):
+                    derived = "active"
+            except Exception:
+                derived = "active"
 
     summary = {
         "goal_id": goal_id,
@@ -183,6 +218,7 @@ def sync_goal_status(db, goal_id, force=False):
         "task_count": len(tasks),
         "task_summary": _count_statuses(tasks),
         "goal": goal,
+        "verification": verification_record,
     }
 
     if derived is None:
@@ -197,11 +233,21 @@ def sync_goal_status(db, goal_id, force=False):
         summary["reason"] = "unchanged"
         return summary
 
+    reason = f"derived from {len(tasks)} tasks"
+    if (
+        verification_record is not None
+        and derived == TERMINAL_SUCCESS
+        and verification_record.get("goal_ok")
+    ):
+        reason = f"goal acceptance OK ({len(tasks)} tasks)"
+    elif verification_record is not None and derived == "active":
+        reason = "goal acceptance pending verification"
+
     updated = goals.update_goal_status(
         db,
         goal_id,
         derived,
-        reason=f"derived from {len(tasks)} tasks",
+        reason=reason,
         force=force,
     )
     summary["changed"] = True

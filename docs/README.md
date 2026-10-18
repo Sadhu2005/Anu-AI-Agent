@@ -55,21 +55,20 @@ the next version.
 | [V0.5.9](versions/v0.5.9.md) | Autonomous production execution | Frozen | tag `v0.5.9` |
 | [V0.6.0](versions/v0.6.0.md) | Reliable autonomous execution | Frozen | tag `v0.6.0`, branch `v0.6.0-integration` |
 | [V0.6.1](versions/v0.6.1.md) | Goal → Plan → Task Graph | Frozen | tag `v0.6.1`, branch `v0.6.1-integration` |
+| [V0.6.2](versions/v0.6.2.md) | Capabilities | Frozen | tag `v0.6.2` |
+| [V0.6.3](versions/v0.6.3.md) | Memory / observation | Frozen | tag `v0.6.3` |
+| [V0.6.4](versions/v0.6.4.md) | Project intelligence | Frozen | tag `v0.6.4` |
 
 ### In progress
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.6.2](versions/v0.6.2.md) | Capabilities | Step 2 (policy denial + audit) |
+| [V0.6.5](versions/v0.6.5.md) | Verification / evaluation | Step 1 (portable) |
 
 ### Planned
 
 | Version | Title |
 |---|---|
-| [V0.6.2](versions/v0.6.2.md) | Tool / capability architecture |
-| [V0.6.3](versions/v0.6.3.md) | Memory / observation layer |
-| [V0.6.4](versions/v0.6.4.md) | Project intelligence |
-| [V0.6.5](versions/v0.6.5.md) | Verification / evaluation |
 | [V0.6.6](versions/v0.6.6.md) | Resource-aware intelligence |
 | [V0.6.7](versions/v0.6.7.md) | Human approval boundary |
 | [V0.6.8](versions/v0.6.8.md) | Long-running agent |

@@ -25,8 +25,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Install host deps (PyYAML)
+        run: pip install -r requirements.txt
       - name: V0.6.2 regression pack
         run: python tests/run_v0_6_2_regression.py
+      - name: V0.6.5 regression pack
+        run: |
+          if [ -f tests/run_v0_6_5_regression.py ]; then
+            python tests/run_v0_6_5_regression.py
+          else
+            echo "skip: no V0.6.5 pack on this branch"
+          fi
 
   config-yaml:
     runs-on: ubuntu-latest
@@ -35,6 +44,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Install host deps (PyYAML)
+        run: pip install -r requirements.txt
       - name: YAML lint config
         run: |
           if command -v yamllint >/dev/null 2>&1; then
@@ -43,11 +54,7 @@ jobs:
             python - <<'PY'
           import sys
           from pathlib import Path
-          try:
-              import yaml
-          except ImportError:
-              print("skip: no yamllint or PyYAML")
-              sys.exit(0)
+          import yaml
           for path in sorted(Path("config").glob("*.yaml")):
               yaml.safe_load(path.read_text(encoding="utf-8"))
               print(f"ok {path}")

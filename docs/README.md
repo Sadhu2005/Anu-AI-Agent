@@ -72,6 +72,7 @@ the next version.
 |---|---|---|
 | [V0.7.1](versions/v0.7.1.md) | Model gateway | Frozen · tag `v0.7.1` |
 | [V0.7.2](versions/v0.7.2.md) | Optional LLM planner | Frozen · tag `v0.7.2` |
+| [V0.7.3](versions/v0.7.3.md) | LLM tool-call unwrap | In progress · `v0.7.3-integration` |
 
 ## Working Rules
 

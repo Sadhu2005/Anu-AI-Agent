@@ -9,6 +9,7 @@ template planner fallback (``improve_sandbox``).
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import json
 import os
@@ -188,8 +189,103 @@ def _extract_json_object(text: str):
     return None
 
 
+def _parse_embedded(value):
+    """Parse a nested plan string (JSON or Python-literal style)."""
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    try:
+        parsed = ast.literal_eval(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except (SyntaxError, ValueError):
+        pass
+    # Last resort: single-quoted keys/strings → JSON-ish
+    try:
+        repaired = text.replace("'", '"')
+        parsed = json.loads(repaired)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        return None
+    return None
+
+
+def coerce_plan_object(obj, *, depth=0):
+    """Normalize raw model JSON into ``{\"steps\": [...]}`` when possible.
+
+    Handles LM Studio / tool-use envelopes such as::
+
+        {"name": "create_plan", "parameters": {"plan": "{'steps': [...]}"}}
+        {"name": "create_plan", "parameters": {"steps": [...]}}
+        {"tool_calls":[{"function":{"arguments":"{\\"steps\\":[...]}"}}]}
+    """
+    if not isinstance(obj, dict) or depth > 4:
+        return obj
+
+    if isinstance(obj.get("steps"), list):
+        return obj
+
+    # OpenAI-style tool_calls list
+    tool_calls = obj.get("tool_calls")
+    if isinstance(tool_calls, list) and tool_calls:
+        first = tool_calls[0]
+        if isinstance(first, dict):
+            fn = first.get("function") if isinstance(first.get("function"), dict) else first
+            args = None
+            if isinstance(fn, dict):
+                args = fn.get("arguments")
+                if args is None:
+                    args = fn.get("parameters")
+            if args is not None:
+                nested = _parse_embedded(args) if not isinstance(args, dict) else args
+                if nested is not None:
+                    return coerce_plan_object(nested, depth=depth + 1)
+
+    # Tool-call envelope: name + parameters/arguments
+    for key in ("parameters", "arguments", "input"):
+        if key not in obj:
+            continue
+        payload = obj[key]
+        if isinstance(payload, str):
+            payload = _parse_embedded(payload)
+        if not isinstance(payload, dict):
+            continue
+        if isinstance(payload.get("steps"), list):
+            return payload
+        for nested_key in ("plan", "result", "output", "content"):
+            if nested_key not in payload:
+                continue
+            nested = _parse_embedded(payload[nested_key])
+            if nested is not None:
+                return coerce_plan_object(nested, depth=depth + 1)
+        return coerce_plan_object(payload, depth=depth + 1)
+
+    # Bare {"plan": "..."} wrapper
+    for nested_key in ("plan", "result", "output"):
+        if nested_key in obj:
+            nested = _parse_embedded(obj[nested_key])
+            if nested is not None:
+                return coerce_plan_object(nested, depth=depth + 1)
+
+    return obj
+
+
 def validate_steps(raw, *, max_steps=DEFAULT_MAX_STEPS):
     """Validate LLM step list. Returns (ok, steps_or_none, reason)."""
+    if not isinstance(raw, dict):
+        return False, None, "root_not_object"
+    raw = coerce_plan_object(raw)
     if not isinstance(raw, dict):
         return False, None, "root_not_object"
     steps = raw.get("steps")
@@ -311,6 +407,7 @@ def propose_steps(
             "reason": "json_parse_failed",
         }
 
+    parsed = coerce_plan_object(parsed)
     ok, steps, reason = validate_steps(parsed, max_steps=max_steps)
     if not ok:
         return {

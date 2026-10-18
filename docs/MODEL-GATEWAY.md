@@ -225,6 +225,9 @@ planner:
 gateway is down or the model returns invalid / disallowed ops, expand falls
 back to `improve_sandbox`. `template_only` never calls the gateway.
 
+V0.7.3: the planner also unwraps common tool-call envelopes (e.g. LM Studio
+`{"name":"create_plan","parameters":{"plan":"..."}}`) before validation.
+
 ## 7. Safety rules (unchanged)
 
 - Model output is **data**, not authority. Plans still go through policy,

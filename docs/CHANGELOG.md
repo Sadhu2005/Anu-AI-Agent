@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.7.1] — in progress · branch `v0.7.1-integration`
+## [V0.7.1] — 2026-10-18 · tag `v0.7.1`
 
 Model gateway (OpenAI-compatible): LM Studio / cloud by config + API key.
 
@@ -13,6 +13,8 @@ Model gateway (OpenAI-compatible): LM Studio / cloud by config + API key.
 - Client: `anu-model-client-v0.1.py` for `anu-agent`
 - systemd: `anu-model-gateway.service` with `LoadCredential=`
 - ADR-011 accepted; URL-as-key rejected
+- Pi: regression **2/2**; unit active; client health/chat `ok: true` → LM Studio
+- Deferred: optional LLM planner via gateway (next slice)
 
 ## [V0.7.0] — 2026-10-18 · tag `v0.7.0`
 

@@ -70,7 +70,7 @@ the next version.
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.7.1](versions/v0.7.1.md) | Model gateway | Step 2 (socket + systemd) |
+| [V0.7.1](versions/v0.7.1.md) | Model gateway | Frozen · tag `v0.7.1` |
 
 ## Working Rules
 

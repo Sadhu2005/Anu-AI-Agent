@@ -95,18 +95,15 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.7.1](versions/v0.7.1.md) model gateway: LM Studio on LAN or any
-OpenAI-compatible cloud by switching `base_url` / `model` / API key
-([MODEL-GATEWAY.md](MODEL-GATEWAY.md)).
+V0.7.1 is frozen (tag `v0.7.1`): model gateway live on Pi → LM Studio.
+Next slice: optional LLM planner via gateway with template fallback.
 
-V0.7.0 is frozen (tag `v0.7.0`). V0.7.1 step 2 is on `v0.7.1-integration`
-(Unix socket + systemd; Pi install + planner wiring next).
-
-## Model gateway (this release = V0.7.1)
+## Model gateway (V0.7.1 frozen)
 
 API-first **`anu-model-gateway`** ([MODEL-STRATEGY.md](MODEL-STRATEGY.md),
 ADR-011 accepted). Provider protocol is OpenAI-compatible so LM Studio and
-cloud keys are config changes, not architecture changes.
+cloud keys are config changes, not architecture changes
+([MODEL-GATEWAY.md](MODEL-GATEWAY.md)).
 
 ## Beyond V0.7.0
 

@@ -227,4 +227,4 @@ sudo -u anu-agent python3 -B /srv/anu/bin/anu-model-client-v0.1.py chat \
 | `anu-model-gateway-v0.1.py` (OpenAI-compatible + `serve`) | V0.7.1 step 1–2 |
 | `anu-model-client-v0.1.py` (AF_UNIX client) | V0.7.1 step 2 |
 | systemd + LoadCredential + SO_PEERCRED | V0.7.1 step 2 |
-| Planner optional LLM path | V0.7.1 step 3 |
+| Planner optional LLM path | Deferred (post–V0.7.1 freeze) |

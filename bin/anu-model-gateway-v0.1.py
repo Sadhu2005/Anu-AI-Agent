@@ -12,7 +12,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
+import socket
+import struct
 import sys
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -87,6 +91,10 @@ def load_config(path: Path | None = None) -> dict:
         "socket": {
             "path": "/run/anu-model/model.sock",
             "mode": "0660",
+            "require_peercred": True,
+            "allow_user": "anu-agent",
+            "allow_group": "anu-agent",
+            "max_request_bytes": 65536,
         },
         "_config_path": str(chosen),
     }
@@ -353,6 +361,209 @@ def _cli_fail(message: str, *, extra=None) -> int:
     return 1
 
 
+# --- Unix socket server (V0.7.1 step 2) ---
+
+MAX_REQUEST_BYTES_DEFAULT = 64 * 1024
+BUFFER_SIZE = 4096
+CLIENT_TIMEOUT_SEC = 30.0
+_STOP = False
+
+
+def peer_credentials(conn):
+    """Return (pid, uid, gid) via SO_PEERCRED (Linux only)."""
+    if not hasattr(socket, "SO_PEERCRED"):
+        raise RuntimeError("SO_PEERCRED not available on this platform")
+    size = struct.calcsize("3i")
+    raw = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, size)
+    return struct.unpack("3i", raw)
+
+
+def resolve_authorized_ids(cfg: dict):
+    """Resolve allow_user / allow_group to uid/gid (Linux)."""
+    sock_cfg = cfg.get("socket") or {}
+    user_name = str(sock_cfg.get("allow_user") or "anu-agent")
+    group_name = str(sock_cfg.get("allow_group") or "anu-agent")
+    try:
+        import grp
+        import pwd
+
+        uid = pwd.getpwnam(user_name).pw_uid
+        gid = grp.getgrnam(group_name).gr_gid
+        return uid, gid
+    except Exception as exc:
+        raise RuntimeError(
+            f"unable to resolve allow_user={user_name!r} "
+            f"allow_group={group_name!r}: {exc}"
+        ) from exc
+
+
+def send_json(conn, payload: dict) -> None:
+    raw = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+    conn.sendall(raw)
+
+
+def read_json_line(conn, *, max_bytes: int) -> dict:
+    data = bytearray()
+    while len(data) < max_bytes:
+        chunk = conn.recv(BUFFER_SIZE)
+        if not chunk:
+            break
+        data.extend(chunk)
+        if b"\n" in chunk:
+            break
+    if len(data) >= max_bytes:
+        raise ValueError("request exceeds maximum size")
+    line = bytes(data).split(b"\n", 1)[0]
+    if not line:
+        raise ValueError("empty request")
+    request = json.loads(line.decode("utf-8"))
+    if not isinstance(request, dict):
+        raise ValueError("request must be a JSON object")
+    return request
+
+
+def handle_socket_request(cfg: dict, request: dict) -> dict:
+    """Dispatch a socket JSON request to health/chat/reason."""
+    op = str(request.get("op") or request.get("cmd") or "").strip().lower()
+    if op == "health":
+        return health_check(cfg)
+    if op == "chat":
+        prompt = request.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("chat requires prompt string")
+        messages = []
+        system = request.get("system")
+        if isinstance(system, str) and system.strip():
+            messages.append({"role": "system", "content": system.strip()})
+        messages.append({"role": "user", "content": prompt.strip()})
+        result = request_chat(
+            cfg,
+            messages=messages,
+            model=request.get("model"),
+            privacy_class=request.get("privacy_class"),
+        )
+        return {
+            "ok": True,
+            "model": result["model"],
+            "text": result["text"],
+            "zero_cost": result["zero_cost"],
+        }
+    if op == "reason":
+        prompt = request.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("reason requires prompt string")
+        result = request_reasoning(
+            prompt,
+            cfg=cfg,
+            system=request.get("system"),
+            privacy_class=request.get("privacy_class"),
+            model=request.get("model"),
+        )
+        return {
+            "ok": True,
+            "model": result["model"],
+            "text": result["text"],
+            "zero_cost": result.get("zero_cost"),
+        }
+    raise ValueError(f"unknown op: {op!r} (expected health|chat|reason)")
+
+
+def _handle_client(conn, cfg: dict, auth_uid: int | None, auth_gid: int | None):
+    sock_cfg = cfg.get("socket") or {}
+    max_bytes = int(sock_cfg.get("max_request_bytes") or MAX_REQUEST_BYTES_DEFAULT)
+    require_peer = bool(sock_cfg.get("require_peercred", True))
+    try:
+        conn.settimeout(CLIENT_TIMEOUT_SEC)
+        if require_peer:
+            pid, uid, gid = peer_credentials(conn)
+            if auth_uid is None or auth_gid is None:
+                send_json(conn, {
+                    "ok": False,
+                    "error": "peercred required but allow ids unresolved",
+                })
+                return
+            if uid != auth_uid or gid != auth_gid:
+                send_json(conn, {
+                    "ok": False,
+                    "error": "Peer credentials rejected.",
+                    "peer": {"pid": pid, "uid": uid, "gid": gid},
+                })
+                return
+        request = read_json_line(conn, max_bytes=max_bytes)
+        result = handle_socket_request(cfg, request)
+        send_json(conn, result)
+    except Exception as exc:
+        try:
+            send_json(conn, {"ok": False, "error": str(exc)})
+        except Exception:
+            pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def serve_unix_socket(cfg: dict, *, socket_path: str | None = None) -> None:
+    """Long-running AF_UNIX listener for agent clients."""
+    global _STOP
+    _STOP = False
+    sock_cfg = cfg.get("socket") or {}
+    path = Path(socket_path or sock_cfg.get("path") or "/run/anu-model/model.sock")
+    mode_raw = sock_cfg.get("mode") or "0660"
+    mode = int(str(mode_raw), 8) if not isinstance(mode_raw, int) else mode_raw
+    require_peer = bool(sock_cfg.get("require_peercred", True))
+
+    auth_uid = auth_gid = None
+    if require_peer:
+        auth_uid, auth_gid = resolve_authorized_ids(cfg)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+    def _shutdown(signum, frame):
+        global _STOP
+        _STOP = True
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
+    if not hasattr(socket, "AF_UNIX"):
+        raise RuntimeError("AF_UNIX not available on this platform")
+
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(path))
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
+    server.listen(8)
+    server.settimeout(1.0)
+    print(f"ANU Model Gateway listening on {path}", flush=True)
+
+    try:
+        while not _STOP:
+            try:
+                conn, _ = server.accept()
+            except socket.timeout:
+                continue
+            thread = threading.Thread(
+                target=_handle_client,
+                args=(conn, cfg, auth_uid, auth_gid),
+                daemon=True,
+            )
+            thread.start()
+    finally:
+        server.close()
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="ANU Model Gateway v0.1")
     parser.add_argument(
@@ -375,6 +586,21 @@ def main(argv=None):
     reason_p.add_argument("--prompt", required=True)
     reason_p.add_argument("--system", default=None)
     reason_p.add_argument("--privacy-class", default=None)
+
+    serve_p = sub.add_parser(
+        "serve",
+        help="listen on Unix socket for agent clients",
+    )
+    serve_p.add_argument(
+        "--socket",
+        default=None,
+        help="override socket path from config",
+    )
+    serve_p.add_argument(
+        "--no-peercred",
+        action="store_true",
+        help="disable SO_PEERCRED check (tests / non-Linux only)",
+    )
 
     args = parser.parse_args(argv)
     try:
@@ -427,6 +653,13 @@ def main(argv=None):
                 "model": result["model"],
                 "text": result["text"],
             }, indent=2))
+            return 0
+
+        if args.cmd == "serve":
+            if args.no_peercred:
+                cfg.setdefault("socket", {})
+                cfg["socket"] = {**cfg["socket"], "require_peercred": False}
+            serve_unix_socket(cfg, socket_path=args.socket)
             return 0
 
         parser.error(f"unknown command: {args.cmd}")

@@ -1,6 +1,16 @@
-# ANU Model Gateway (V0.7.1) — draft unit for step 2.
-# Agent stays PrivateNetwork; this service alone reaches the model provider.
-# Install later: copy to /etc/systemd/system/, create user anu-model, socket dir.
+# ANU Model Gateway (V0.7.1 step 2)
+# anu-agent stays PrivateNetwork; only this service reaches LM Studio / cloud.
+#
+# Install (Pi, as root):
+#   1. Create user: useradd --system --home /nonexistent --shell /usr/sbin/nologin anu-model
+#      usermod -aG anu-agent anu-model   # optional shared group for socket dir
+#   2. Install key (never in git):
+#        install -d -m 0750 /etc/anu
+#        printf '%s' 'YOUR_LM_STUDIO_TOKEN' > /etc/anu/model-api-key
+#        chown root:anu-model /etc/anu/model-api-key && chmod 0640 /etc/anu/model-api-key
+#   3. Set config base_url to PC LAN, e.g. http://192.168.1.13:1234/v1
+#   4. cp deploy/systemd/anu-model-gateway.service /etc/systemd/system/
+#      systemctl daemon-reload && systemctl enable --now anu-model-gateway
 
 [Unit]
 Description=ANU Model Gateway (OpenAI-compatible)
@@ -11,26 +21,24 @@ ConditionPathExists=/srv/anu/bin/anu-model-gateway-v0.1.py
 
 [Service]
 Type=simple
-# Prefer a dedicated user in step 2; root/agent must not share identity.
-# User=anu-model
-# Group=anu-model
+User=anu-model
+Group=anu-agent
 
 WorkingDirectory=/srv/anu/home
 Environment=ANU_BASE=/srv/anu
-# Local LM Studio: any non-empty bearer is fine. Cloud: set real key via
-# LoadCredential and point ANU_MODEL_API_KEY_FILE at it — never commit keys.
-Environment=ANU_MODEL_API_KEY=lm-studio
-# LoadCredential=model_api_key:/etc/anu/model-api-key
-# Environment=ANU_MODEL_API_KEY_FILE=%d/model_api_key
 
-# Step 1 smoke: oneshot CLI is used from tests. Step 2 will run a socket server.
-# For now this unit documents the hardened shape; ExecStart may become a
-# long-running socket listener.
-ExecStart=/usr/bin/python3 /srv/anu/bin/anu-model-gateway-v0.1.py health
-RemainAfterExit=yes
-Type=oneshot
+# API key via systemd credential → file env (never commit keys).
+LoadCredential=model_api_key:/etc/anu/model-api-key
+Environment=ANU_MODEL_API_KEY_FILE=%d/model_api_key
 
-Restart=no
+RuntimeDirectory=anu-model
+RuntimeDirectoryMode=0750
+UMask=0007
+
+ExecStart=/usr/bin/python3 /srv/anu/bin/anu-model-gateway-v0.1.py serve
+
+Restart=on-failure
+RestartSec=5
 
 NoNewPrivileges=yes
 CapabilityBoundingSet=
@@ -46,14 +54,12 @@ LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 
-# Gateway needs outbound HTTP to LM Studio / cloud — NOT PrivateNetwork.
-# Still no AF_PACKET; only Unix + IP.
+# Outbound HTTP to LM Studio (LAN) or cloud — not PrivateNetwork.
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 ReadOnlyPaths=/srv/anu/config
 ReadOnlyPaths=/srv/anu/bin
 ReadWritePaths=/srv/anu/logs
-# StateDirectory=anu-model
 
 [Install]
 WantedBy=multi-user.target

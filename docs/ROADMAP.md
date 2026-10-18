@@ -45,7 +45,7 @@ V0.6.7       ████████████████████  100%
 V0.6.8       ████████████████████  100%
 V0.6.9       ████████████████████  100%
 V0.7.0       ████████████████████  100%
-V0.7.1       ████░░░░░░░░░░░░░░░░   20%  (model gateway docs + scaffold)
+V0.7.1       ████████░░░░░░░░░░░░   40%  (socket + systemd; Pi evidence pending)
 ```
 
 
@@ -99,7 +99,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 OpenAI-compatible cloud by switching `base_url` / `model` / API key
 ([MODEL-GATEWAY.md](MODEL-GATEWAY.md)).
 
-V0.7.0 is frozen (tag `v0.7.0`). V0.7.1 step 1 is on `v0.7.1-integration`.
+V0.7.0 is frozen (tag `v0.7.0`). V0.7.1 step 2 is on `v0.7.1-integration`
+(Unix socket + systemd; Pi install + planner wiring next).
 
 ## Model gateway (this release = V0.7.1)
 

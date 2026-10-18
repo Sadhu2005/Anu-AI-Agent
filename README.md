@@ -29,10 +29,10 @@ anu-agent.service
 | | |
 |---|---|
 | **Version** | V0.7.1 in progress; branch **`v0.7.1-integration`** (V0.7.0 frozen) |
-| **Proven** | V0.5.9–V0.7.0 as before; model gateway scaffold + OpenAI-compatible config |
-| **Maturity** | V0.7.0 **100%** · V0.7.1 **~20%** |
-| **Next** | Point gateway at LM Studio (LAN) or cloud; socket + planner wiring |
-| **Then** | V0.8+ per vision |
+| **Proven** | V0.5.9–V0.7.0; model gateway CLI + Unix socket/client + systemd unit |
+| **Maturity** | V0.7.0 **100%** · V0.7.1 **~40%** |
+| **Next** | Pi install gateway → LM Studio LAN; then planner optional path |
+| **Then** | Freeze `v0.7.1` · V0.8+ per vision |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
 

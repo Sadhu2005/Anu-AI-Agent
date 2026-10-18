@@ -70,7 +70,7 @@ the next version.
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.7.1](versions/v0.7.1.md) | Model gateway | Step 1 (docs + scaffold) |
+| [V0.7.1](versions/v0.7.1.md) | Model gateway | Step 2 (socket + systemd) |
 
 ## Working Rules
 

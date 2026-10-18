@@ -9,8 +9,10 @@ Model gateway (OpenAI-compatible): LM Studio / cloud by config + API key.
 
 - Docs: [MODEL-GATEWAY.md](MODEL-GATEWAY.md), [versions/v0.7.1.md](versions/v0.7.1.md)
 - Config: `config/anu-model-gateway.yaml` (no secrets)
-- Gateway: `bin/anu-model-gateway-v0.1.py` (`health` / `chat` / `reason`)
-- ADR-011 accepted; draft `deploy/systemd/anu-model-gateway.service`
+- Gateway: `serve` Unix socket + SO_PEERCRED; CLI `health` / `chat` / `reason`
+- Client: `anu-model-client-v0.1.py` for `anu-agent`
+- systemd: `anu-model-gateway.service` with `LoadCredential=`
+- ADR-011 accepted; URL-as-key rejected
 
 ## [V0.7.0] — 2026-10-18 · tag `v0.7.0`
 

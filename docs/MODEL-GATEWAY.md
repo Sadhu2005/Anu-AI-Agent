@@ -160,24 +160,50 @@ to the exact id LM Studio shows in `/v1/models`.
 curl http://127.0.0.1:1234/v1/models
 ```
 
-**From Pi (replace IP):**
+**From Pi (LAN to PC LM Studio):**
 
 ```bash
-curl http://192.168.x.x:1234/v1/models
-curl http://192.168.x.x:1234/v1/chat/completions \
+curl http://192.168.1.13:1234/v1/models
+curl http://192.168.1.13:1234/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer lm-studio" \
+  -H "Authorization: Bearer $ANU_MODEL_API_KEY" \
   -d '{"model":"meta-llama-3.1-8b-instruct","messages":[{"role":"user","content":"ping"}],"max_tokens":32}'
 ```
 
-**Via ANU gateway (repo checkout):**
+**Via ANU gateway CLI (direct HTTP, same as PC smoke):**
 
 ```bash
-export ANU_BASE=/srv/anu   # or your checkout
-export ANU_MODEL_API_KEY=lm-studio
+export ANU_BASE=/srv/anu
+# Edit config base_url to http://192.168.1.13:1234/v1 on the Pi
+export ANU_MODEL_API_KEY_FILE=/etc/anu/model-api-key   # or ANU_MODEL_API_KEY=
 python3 -B bin/anu-model-gateway-v0.1.py health
 python3 -B bin/anu-model-gateway-v0.1.py chat --prompt "Reply with OK only."
 ```
+
+**Via Unix socket (agent path, after systemd unit is up):**
+
+```bash
+sudo systemctl status anu-model-gateway
+sudo -u anu-agent python3 -B /srv/anu/bin/anu-model-client-v0.1.py health
+sudo -u anu-agent python3 -B /srv/anu/bin/anu-model-client-v0.1.py chat \
+  --prompt "Reply with OK only."
+```
+
+---
+
+## 5b. Pi install (V0.7.1 step 2)
+
+1. Pull `v0.7.1-integration` on `/srv/anu`.
+2. Set `base_url: "http://192.168.1.13:1234/v1"` in
+   `/srv/anu/config/anu-model-gateway.yaml` (PC LAN IP; keep LM Studio running).
+3. Create system user + key file + unit (see comments in
+   `deploy/systemd/anu-model-gateway.service`).
+4. `systemctl enable --now anu-model-gateway`
+5. Confirm socket: `ls -l /run/anu-model/model.sock`
+6. Client as `anu-agent` (peercred): `anu-model-client-v0.1.py health`
+
+`anu-agent.service` stays `PrivateNetwork=yes` — it must **not** call
+`192.168.1.13` directly; only the gateway process may.
 
 ---
 
@@ -196,6 +222,7 @@ python3 -B bin/anu-model-gateway-v0.1.py chat --prompt "Reply with OK only."
 | Piece | Status |
 |---|---|
 | Config schema + operator guide | V0.7.1 step 1 |
-| `anu-model-gateway-v0.1.py` (OpenAI-compatible client) | V0.7.1 step 1 |
-| systemd + LoadCredential + Unix socket | V0.7.1 step 2 |
+| `anu-model-gateway-v0.1.py` (OpenAI-compatible + `serve`) | V0.7.1 step 1–2 |
+| `anu-model-client-v0.1.py` (AF_UNIX client) | V0.7.1 step 2 |
+| systemd + LoadCredential + SO_PEERCRED | V0.7.1 step 2 |
 | Planner optional LLM path | V0.7.1 step 3 |

@@ -11,6 +11,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 
 TESTS = [
     TESTS_DIR / "test_model_gateway_config_v0_7_1.py",
+    TESTS_DIR / "test_model_gateway_socket_v0_7_1.py",
 ]
 
 

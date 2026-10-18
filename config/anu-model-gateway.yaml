@@ -6,8 +6,9 @@
 enabled: true
 provider: openai_compatible
 
-# Default: LM Studio local loopback. On the Pi, set to your PC's LAN IP, e.g.
-#   base_url: "http://192.168.1.50:1234/v1"
+# Default: LM Studio local loopback (PC smoke test).
+# On the Pi, set to your PC LAN IP, e.g. this home lab host:
+#   base_url: "http://192.168.1.13:1234/v1"
 base_url: "http://127.0.0.1:1234/v1"
 model: "meta-llama-3.1-8b-instruct"
 
@@ -36,6 +37,11 @@ budget:
     - "192.168."
 
 socket:
-  # Step 2: Unix socket path for agent → gateway.
+  # Agent → gateway (AF_UNIX). Mode 0660; group anu-agent on Pi.
   path: "/run/anu-model/model.sock"
   mode: "0660"
+  # SO_PEERCRED: only anu-agent uid/gid (resolved at serve time on Linux).
+  require_peercred: true
+  allow_user: "anu-agent"
+  allow_group: "anu-agent"
+  max_request_bytes: 65536

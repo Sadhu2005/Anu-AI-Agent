@@ -97,8 +97,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.7.3](versions/v0.7.3.md) LM Studio tool-call unwrap on
-`v0.7.3-integration`. V0.7.2 is frozen (tag `v0.7.2`).
+V0.7.3 is frozen (tag `v0.7.3`): tool-call unwrap + safe template fallback.
+Next: stronger no-tools prompt for live `source=llm`, or next roadmap slice.
 
 ## Model gateway (V0.7.1 frozen)
 

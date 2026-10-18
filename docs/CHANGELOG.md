@@ -3,13 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.7.3] — in progress · branch `v0.7.3-integration`
+## [V0.7.3] — 2026-10-18 · tag `v0.7.3`
 
 LLM planner unwrap for LM Studio tool-call envelopes.
 
 - `coerce_plan_object`: `parameters.plan`, nested JSON / Python-literal, OpenAI
   `tool_calls`
 - Pack: `run_v0_7_3_regression.py`
+- Pi: regression **2/2**; live expand still may `template_fallback` on tool-echo
 
 ## [V0.7.2] — 2026-10-18 · tag `v0.7.2`
 

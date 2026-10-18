@@ -13,7 +13,7 @@ Capabilities: policy-checked, audited invoke through the registry and gateway.
   audit drop stderr, sandboxd) + review P0 plan/freeze/superseded fixes
 - YAML↔`COMMANDS` drift assert; `filesystem.write` deferred
 - Portable regression 9/9; Pi live: `git.status` hardened invoke + denials
-- Known follow-up: agent admission/runtime → registry adapter
+- Post-freeze: `anu-capability-adapter-v0.1.py` — Safe Mutation ops via registry
 
 ## [V0.6.1] — 2026-10-16 · tag `v0.6.1`
 

@@ -19,6 +19,7 @@ TESTS = [
     TESTS_DIR / "test_capability_registry_v0_6_2.py",
     TESTS_DIR / "test_capability_policy_denial_v0_6_2.py",
     TESTS_DIR / "test_mutation_goal_attribution_v0_6_2.py",
+    TESTS_DIR / "test_capability_adapter_v0_6_2.py",
 ]
 
 

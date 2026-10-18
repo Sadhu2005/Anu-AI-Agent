@@ -17,6 +17,7 @@ from pathlib import Path
 
 BASE = Path(os.environ.get('ANU_BASE', '/srv/anu'))
 GATEWAY = BASE / 'bin' / 'anu-command-gateway.py'
+CAPABILITY_ADAPTER = BASE / 'bin' / 'anu-capability-adapter-v0.1.py'
 DB_FILE = BASE / 'brain' / 'anu-brain.db'
 LOG_FILE = BASE / 'logs' / 'anu-mutations.jsonl'
 CHECKPOINT_ROOT = BASE / 'checkpoints' / 'mutations'
@@ -132,7 +133,41 @@ def atomic_write(path, content):
             tmp.unlink()
 
 
+def _capability_adapter():
+    return _load_sibling(CAPABILITY_ADAPTER, 'anu_capability_adapter_v0_1_sm')
+
+
 def run_gateway(project_name, operation, task_id=None):
+    """Run a named operation through the capability registry (V0.6.2 adapter).
+
+    Falls back to direct gateway only if the adapter module is missing.
+    """
+    try:
+        adapter = _capability_adapter()
+    except Exception:
+        adapter = None
+
+    if adapter is not None:
+        goal_id = None
+        if task_id is not None:
+            try:
+                with _db_helper().db_connect(DB_FILE) as db:
+                    row = db.execute(
+                        'SELECT goal_id FROM tasks WHERE id = ?',
+                        (task_id,),
+                    ).fetchone()
+                    if row:
+                        goal_id = row[0]
+            except Exception:
+                goal_id = None
+        return adapter.run_capability(
+            project_name,
+            operation,
+            task_id=task_id,
+            goal_id=goal_id,
+        )
+
+    # Legacy direct gateway (adapter not deployed).
     proc = subprocess.run(
         [
             sys.executable, str(GATEWAY), 'run', operation,
@@ -159,10 +194,13 @@ def run_gateway(project_name, operation, task_id=None):
         'result': payload,
         'stdout': stdout[-20000:],
         'stderr': proc.stderr[-12000:],
+        'admitted': True,
     }
 
 
 def gateway_ok(run):
+    if run.get('admitted') is False:
+        return False
     result = run.get('result') or {}
     return run.get('process_exit_code') == 0 and result.get('ok') is True
 

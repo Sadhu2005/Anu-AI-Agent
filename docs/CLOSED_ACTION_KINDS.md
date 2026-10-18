@@ -32,9 +32,20 @@ Roles such as `inspect`, `propose`, or `verify` may appear in
 `AgentAction.parameters` for future planners; **execution** still uses
 `python_test` or `python_compile` only.
 
+## Execution path (V0.6.2 adapter)
+
+Safe Mutation no longer calls the command gateway directly for these
+operations. It uses `anu-capability-adapter-v0.1.py`:
+
+```text
+python_test → python.test → CapabilityRegistry.invoke → gateway run
+```
+
+Unknown or disabled capabilities fail closed before gateway execution.
+
 ## Implications
 
 - No filesystem, git, browser, or research steps in templates until capability
   invoke and policy (V0.6.2+) register them explicitly.
 - Adding a new kind or operation requires updating this document, the planner
-  allow-list, and a version step with tests.
+  allow-list, the adapter map, and a version step with tests.

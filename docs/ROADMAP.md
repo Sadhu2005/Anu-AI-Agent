@@ -87,11 +87,10 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-**Agent → capability adapter** (deferred V0.6.2 exit criterion), then
 [V0.6.3](versions/v0.6.3.md) memory / observation.
 
-V0.6.2 is frozen: registry, denial audit, invoke→gateway, V0.6.1b hardening,
-portable regression, and Pi `git.status` evidence
+V0.6.2 is frozen (tag `v0.6.2`); post-freeze **capability adapter** routes
+Safe Mutation ops through the registry
 ([versions/v0.6.2.md](versions/v0.6.2.md)).
 
 ## Model gateway (separate release)

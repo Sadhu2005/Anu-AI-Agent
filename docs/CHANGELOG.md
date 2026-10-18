@@ -3,12 +3,13 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.7.5] — in progress · branch `v0.7.5-integration`
+## [V0.7.5] — 2026-10-18 · tag `v0.7.5`
 
 Activity reports (“What did you do?”) — read-only brain assembly.
 
 - `anu-activity-report-v0.1.py`: `goal --goal-id` / `recent --limit`
 - Pack: `run_v0_7_5_regression.py`
+- Pi: regression **1/1**; goal 12 report `ok` (`source_hint=llm`)
 
 ## [V0.7.4] — 2026-10-18 · tag `v0.7.4`
 

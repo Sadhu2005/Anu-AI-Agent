@@ -99,8 +99,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.7.5](versions/v0.7.5.md) activity reports on `v0.7.5-integration`.
-V0.7.4 is frozen (tag `v0.7.4`). V0.8 remains reserved for larger capability work.
+V0.7.5 is frozen (tag `v0.7.5`): activity reports on Pi.
+Next: further 0.7.x glue, or V0.8 capability work (VISION).
 
 ## Model gateway (V0.7.1 frozen)
 

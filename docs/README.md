@@ -60,12 +60,7 @@ the next version.
 | [V0.6.4](versions/v0.6.4.md) | Project intelligence | Frozen | tag `v0.6.4` |
 | [V0.6.5](versions/v0.6.5.md) | Verification / evaluation | Frozen | tag `v0.6.5` |
 | [V0.6.6](versions/v0.6.6.md) | Resource-aware intelligence | Frozen | tag `v0.6.6` |
-
-### In progress
-
-| Version | Title | Status |
-|---|---|---|
-| [V0.6.7](versions/v0.6.7.md) | Human approval boundary | Step 1 (portable) |
+| [V0.6.7](versions/v0.6.7.md) | Human approval boundary | Frozen | tag `v0.6.7` |
 
 ### Planned
 

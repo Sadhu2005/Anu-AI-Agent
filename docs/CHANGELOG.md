@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.6.7] — in progress · branch `v0.6.7-integration`
+## [V0.6.7] — 2026-10-18 · tag `v0.6.7`
 
 Human approval boundary: AUTONOMOUS / APPROVAL / DENY.
 
@@ -11,7 +11,7 @@ Human approval boundary: AUTONOMOUS / APPROVAL / DENY.
 - CLI request / list / approve / reject / expire; task WAITING → pending on grant
 - Gateway records approval when Governor returns APPROVAL
 - Production deploy gate via project intelligence rule
-- Portable regression pending Pi evidence
+- Pi: migrate + regression 4/4; approve id=1 → task 257 pending
 
 ## [V0.6.6] — 2026-10-18 · tag `v0.6.6`
 

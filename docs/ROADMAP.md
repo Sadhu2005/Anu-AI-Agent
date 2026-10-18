@@ -98,8 +98,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.7.4](versions/v0.7.4.md) planner prompt harden + retry on
-`v0.7.4-integration`. V0.7.3 is frozen (tag `v0.7.3`).
+V0.7.4 is frozen (tag `v0.7.4`): live LLM planning with retry works on Pi.
+Next: roadmap slice beyond the gateway/planner glue (see Beyond V0.7.0).
 
 ## Model gateway (V0.7.1 frozen)
 

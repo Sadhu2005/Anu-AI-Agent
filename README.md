@@ -28,10 +28,11 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.5.9, frozen 5 Oct 2026 (tag `v0.5.9`) |
-| **Proven** | The production service autonomously committed a real code change (checkpoint → change → test pass → COMMITTED → task complete) and safely rolled back a failing one (test failure → rollback → integrity verified) |
-| **Next** | V0.6.0: retry, crash/restart recovery, idempotent mutations |
-| **Then** | V0.6.x reliability, planning, capabilities, memory → V0.7.0 real agent runtime |
+| **Version** | V0.6.1 frozen (tag `v0.6.1`); active integration **`v0.6.2-integration`** |
+| **Proven** | V0.5.9 autonomous commit/rollback; V0.6.0 recovery/idempotency; V0.6.1 goal → plan → task graph (Pi evidence) |
+| **Maturity** | V0.6.1 **100%** · V0.6.1b boundary hardening **landed** · V0.6.2 capabilities **in progress** (~40%) |
+| **Next** | V0.6.2 invoke evidence on Pi, then memory/observation (V0.6.3) |
+| **Then** | V0.6.x verification, resources, approval → V0.7.0 agent runtime |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
 

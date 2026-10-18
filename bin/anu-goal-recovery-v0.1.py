@@ -15,13 +15,14 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
 _HERE = Path(__file__).resolve().parent
 
@@ -42,6 +43,20 @@ def now_iso():
 
 
 def db_connect(db_path=None):
+    for candidate in (
+        BASE / "bin" / "anu-db-v0.1.py",
+        _HERE / "anu-db-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_db_v0_1_recovery",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.db_connect(
+                db_path if db_path is not None else DB_FILE
+            )
     path = Path(db_path) if db_path is not None else DB_FILE
     db = sqlite3.connect(str(path))
     db.row_factory = sqlite3.Row
@@ -126,13 +141,27 @@ def _validate_reason(reason):
     return reason.strip()
 
 
-def retire_open_tasks(db, goal_id, reason, failure_class="contract"):
-    """Block non-terminal tasks for a goal so a replan/block is unambiguous."""
+def retire_open_tasks(
+    db,
+    goal_id,
+    reason,
+    failure_class="contract",
+    *,
+    terminal_status="blocked",
+):
+    """Retire non-terminal tasks for a goal (``blocked`` or ``superseded``).
+
+    Replan uses ``superseded`` so the scheduler never wakes the old graph (F2).
+    Block policy keeps ``blocked``.
+    """
     db = _require_db(db)
     goal_id = _validate_goal_id(goal_id)
     reason = _validate_reason(reason)
+    if terminal_status not in ("blocked", "superseded"):
+        raise ValueError(
+            "terminal_status must be 'blocked' or 'superseded'"
+        )
 
-    # failure_class column may exist (V0.6.0). Try with it; fall back without.
     rows = db.execute(
         """SELECT id, status FROM tasks
            WHERE goal_id = ? AND status IN ({})
@@ -144,26 +173,33 @@ def retire_open_tasks(db, goal_id, reason, failure_class="contract"):
 
     retired = []
     updated_at = now_iso()
+    event_type = (
+        "TASK_SUPERSEDED" if terminal_status == "superseded" else "TASK_BLOCKED"
+    )
     for row in rows:
         task_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
         prior = row["status"] if isinstance(row, sqlite3.Row) else row[1]
         try:
             db.execute(
                 """UPDATE tasks
-                   SET status = 'blocked',
+                   SET status = ?,
                        failure_class = ?,
                        updated_at = ?
                    WHERE id = ?""",
-                (failure_class, updated_at, task_id),
+                (terminal_status, failure_class, updated_at, task_id),
             )
         except sqlite3.OperationalError:
             db.execute(
                 """UPDATE tasks
-                   SET status = 'blocked', updated_at = ?
+                   SET status = ?, updated_at = ?
                    WHERE id = ?""",
-                (updated_at, task_id),
+                (terminal_status, updated_at, task_id),
             )
-        retired.append({"task_id": task_id, "from_status": prior})
+        retired.append({
+            "task_id": task_id,
+            "from_status": prior,
+            "to_status": terminal_status,
+        })
 
     db.commit()
 
@@ -171,11 +207,12 @@ def retire_open_tasks(db, goal_id, reason, failure_class="contract"):
         _emit_goal_event(
             db,
             goal_id,
-            "TASK_BLOCKED",
+            event_type,
             f"retired open task {item['task_id']}: {reason}",
             {
                 "task_id": item["task_id"],
                 "from_status": item["from_status"],
+                "to_status": item["to_status"],
                 "reason": reason,
                 "failure_class": failure_class,
                 "source": "goal_recovery",
@@ -298,7 +335,11 @@ def replan_goal(
         )
 
     retired = retire_open_tasks(
-        db, goal_id, f"replan: {reason}", failure_class="contract"
+        db,
+        goal_id,
+        f"replan: {reason}",
+        failure_class="contract",
+        terminal_status="superseded",
     )
 
     planner = _load_planner()

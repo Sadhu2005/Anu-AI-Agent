@@ -25,10 +25,21 @@ def _validate_text(value, field_name):
     return value.strip()
 
 
+class _FrozenMapping(tuple):
+    """Tagged immutable mapping: thaw only when this type is present (ADR-014).
+
+    A bare tuple of ``(key, value)`` pairs must not be guessed to be a
+    mapping — that corrupted empty lists and list-of-pairs (review F1).
+    """
+
+
 def _freeze(value):
     """Convert JSON-compatible data into immutable deterministic data."""
 
     if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+
+    if isinstance(value, _FrozenMapping):
         return value
 
     if isinstance(value, Mapping):
@@ -46,7 +57,7 @@ def _freeze(value):
             )
 
         items.sort(key=lambda pair: pair[0])
-        return tuple(items)
+        return _FrozenMapping(items)
 
     if isinstance(value, (list, tuple)):
         return tuple(_freeze(item) for item in value)
@@ -59,18 +70,13 @@ def _freeze(value):
 def _thaw(value):
     """Convert immutable internal data back into JSON-compatible data."""
 
-    if isinstance(value, tuple):
-        if all(
-            isinstance(item, tuple)
-            and len(item) == 2
-            and isinstance(item[0], str)
-            for item in value
-        ):
-            return {
-                key: _thaw(item)
-                for key, item in value
-            }
+    if isinstance(value, _FrozenMapping):
+        return {
+            key: _thaw(item)
+            for key, item in value
+        }
 
+    if isinstance(value, tuple):
         return [_thaw(item) for item in value]
 
     return value
@@ -78,7 +84,7 @@ def _thaw(value):
 
 def _freeze_mapping(value, field_name):
     if value is None:
-        return ()
+        return _FrozenMapping()
 
     if not isinstance(value, Mapping):
         raise TypeError(
@@ -87,7 +93,7 @@ def _freeze_mapping(value, field_name):
 
     frozen = _freeze(value)
 
-    if not isinstance(frozen, tuple):
+    if not isinstance(frozen, _FrozenMapping):
         raise TypeError(
             f"{field_name} must be a mapping"
         )

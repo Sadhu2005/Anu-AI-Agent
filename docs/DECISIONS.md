@@ -408,6 +408,35 @@ silent half-applied change as the accepted outcome.
 
 ---
 
+## ADR-014: Tagged Frozen Mappings in the Agent Model
+
+| | |
+|---|---|
+| **Status** | Accepted |
+| **Since** | V0.6.2 / review remediation (F1), Oct 2026 |
+| **Enforced in** | `bin/anu-agent-model-v0.1.py` (`_FrozenMapping`, `_freeze`, `_thaw`) |
+
+**Decision:** Represent frozen mappings with an explicit `_FrozenMapping`
+wrapper (a tuple subclass with a distinct type), not a bare tuple of
+`(key, value)` pairs. Lists and tuples freeze to ordinary tuples.
+
+**Why:** `_thaw` previously treated any tuple of 2-tuples whose first
+elements were strings as a mapping. That silently turned `[]` into `{}` and
+`[["a", 1], ["b", 2]]` into `{"a": 1, "b": 2}`. Plans store
+`AgentAction.parameters` through this path; empty `depends_on` / `files`
+lists would be permanently corrupted in `goal_plans.body_json`.
+
+> **Principle:** Immutable round trips must be type-preserving for JSON
+> structures the planner and audit trail rely on.
+
+**Trade-offs:** A private wrapper type is slightly more code than a bare
+tuple, but thawing is unambiguous without heuristics.
+
+**Revisit when:** The agent model is versioned to v0.2 with a public
+frozen-mapping API shared outside this module.
+
+---
+
 ## How the Decisions Fit Together
 
 ```text
@@ -417,6 +446,7 @@ SQLite                   → simple local persistent state
 Runtime-owned Scheduler  → resource health above autonomous execution
 Safe Mutation            → a controlled transaction between agent decisions and code changes
 Reconciliation recovery  → interrupted work is restored, then retried once (V0.6.0)
+Tagged frozen mappings   → plan/parameters round trips stay type-correct (ADR-014)
 ```
 
 Together they produce the core ANU philosophy:

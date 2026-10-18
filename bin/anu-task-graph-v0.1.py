@@ -14,15 +14,18 @@ Safety model:
 """
 
 import argparse
+import importlib.util
 import json
+import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
+_HERE = Path(__file__).resolve().parent
 
 MAX_ATTEMPTS = 3
 
@@ -43,6 +46,18 @@ def now_iso():
 
 
 def db_connect(path=None):
+    for candidate in (
+        BASE / "bin" / "anu-db-v0.1.py",
+        _HERE / "anu-db-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_db_v0_1_task_graph",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.db_connect(path or DB_FILE)
     db = sqlite3.connect(path or DB_FILE)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
@@ -77,6 +92,10 @@ def migrate(db):
         CREATE INDEX IF NOT EXISTS
         idx_task_dependencies_prerequisite
         ON task_dependencies(depends_on_task_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_task_key
+            ON tasks(task_key)
+            WHERE task_key IS NOT NULL;
     """)
     db.commit()
 
@@ -123,6 +142,26 @@ def add_dependency(db, task_id, depends_on_task_id):
 
     if task_id == depends_on_task_id:
         raise ValueError("SELF_DEPENDENCY")
+
+    # F9: dependencies must stay inside a single goal.
+    left = db.execute(
+        "SELECT goal_id FROM tasks WHERE id = ?",
+        (task_id,),
+    ).fetchone()
+    right = db.execute(
+        "SELECT goal_id FROM tasks WHERE id = ?",
+        (depends_on_task_id,),
+    ).fetchone()
+
+    def _goal_id(row):
+        if row is None:
+            return None
+        if hasattr(row, "keys"):
+            return row["goal_id"]
+        return row[0]
+
+    if _goal_id(left) != _goal_id(right):
+        raise ValueError("CROSS_GOAL_DEPENDENCY")
 
     if would_create_cycle(db, task_id, depends_on_task_id):
         raise ValueError("DEPENDENCY_CYCLE")

@@ -36,6 +36,18 @@ def make_db():
             status TEXT NOT NULL DEFAULT 'pending',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE agent_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            goal_id INTEGER,
+            parent_task_id INTEGER,
+            run_id TEXT,
+            attempt INTEGER,
+            event_type TEXT NOT NULL,
+            message TEXT,
+            metadata TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         """
     )
     db.execute(

@@ -127,3 +127,18 @@ allowed_commands:
     resources:
       ram_mb: 150
       storage_mb: 1
+
+  # Sandbox operations (must match COMMANDS in anu-command-gateway.py — F13).
+  python_test:
+    type: sandbox
+    operation: python_test
+    resources:
+      ram_mb: 256
+      storage_mb: 50
+
+  python_compile:
+    type: sandbox
+    operation: python_compile
+    resources:
+      ram_mb: 256
+      storage_mb: 50

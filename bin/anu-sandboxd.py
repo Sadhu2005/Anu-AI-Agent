@@ -13,13 +13,14 @@ from pathlib import Path
 import yaml
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 
 CONFIG_FILE = BASE / "config" / "anu-sandbox.yaml"
 SOCKET_FILE = Path("/run/anu-sandbox/sandbox.sock")
 
 MAX_REQUEST_BYTES = 64 * 1024
 BUFFER_SIZE = 4096
+CLIENT_TIMEOUT_SEC = 30.0
 
 STOP = False
 EXECUTION_LOCK = threading.Lock()
@@ -40,8 +41,24 @@ WORKSPACE = Path(
 OPERATIONS = CONFIG["operations"]
 ADMISSION = CONFIG["admission"]
 
-AUTHORIZED_UID = 999
-AUTHORIZED_GID = 984
+
+def resolve_authorized_ids():
+    """Resolve anu-agent uid/gid; fall back to historic pins (F12)."""
+    try:
+        import pwd
+        import grp
+        user = pwd.getpwnam("anu-agent")
+        try:
+            group = grp.getgrnam("anu-agent")
+            gid = group.gr_gid
+        except KeyError:
+            gid = user.pw_gid
+        return user.pw_uid, gid
+    except KeyError:
+        return 999, 984
+
+
+AUTHORIZED_UID, AUTHORIZED_GID = resolve_authorized_ids()
 
 GOVERNOR = Path(
     ADMISSION["governor"]
@@ -278,6 +295,8 @@ def build_command(
         DOCKER["executable"],
         "run",
         "--rm",
+        "--pull",
+        "never",
         "--name",
         container_name,
         "--network",
@@ -457,8 +476,39 @@ def execute(request):
     }
 
 
+def sweep_orphan_containers():
+    """Best-effort cleanup of leftover anu-sbx-* containers (F12)."""
+    try:
+        listed = subprocess.run(
+            [
+                DOCKER["executable"],
+                "ps",
+                "-aq",
+                "--filter",
+                "name=anu-sbx-",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        ids = [
+            line.strip()
+            for line in (listed.stdout or "").splitlines()
+            if line.strip()
+        ]
+        for container_id in ids:
+            subprocess.run(
+                [DOCKER["executable"], "rm", "-f", container_id],
+                capture_output=True,
+                check=False,
+            )
+    except Exception:
+        pass
+
+
 def handle_client(conn):
     try:
+        conn.settimeout(CLIENT_TIMEOUT_SEC)
         pid, uid, gid = peer_credentials(
             conn
         )
@@ -483,6 +533,9 @@ def handle_client(conn):
             )
             return
 
+        # Read request before taking the execution lock (F12).
+        request = read_request(conn)
+
         if not EXECUTION_LOCK.acquire(
             blocking=False
         ):
@@ -500,10 +553,6 @@ def handle_client(conn):
             return
 
         try:
-            request = read_request(
-                conn
-            )
-
             result = execute(
                 request
             )
@@ -631,6 +680,8 @@ def main():
 
     server.listen(8)
     server.settimeout(1.0)
+
+    sweep_orphan_containers()
 
     print(
         f"ANU Sandbox listening on {SOCKET_FILE}",

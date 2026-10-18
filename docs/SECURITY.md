@@ -39,8 +39,11 @@ ANU must never turn a natural-language goal into
 `/bin/sh -c "<arbitrary command>"` or any equivalent path.
 
 **Current control:** the command gateway only accepts allow-listed command
-IDs (`python_test`, `python_compile`), and every subprocess call uses
-`shell=False` (ADR-007).
+IDs (sandbox `python_test` / `python_compile`, plus hardened read-only host
+git commands such as `git_status` / `git_diff` for V0.6.2 capabilities).
+Every subprocess call uses `shell=False` (ADR-007). Host git runs with minimal
+env and injected `-c core.fsmonitor=false`, `-c core.hooksPath=/dev/null`
+(V0.6.1b / F4).
 
 ### 2.2 Direct Docker Administration
 

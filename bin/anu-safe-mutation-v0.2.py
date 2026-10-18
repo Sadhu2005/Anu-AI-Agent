@@ -15,13 +15,36 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-BASE = Path('/srv/anu')
+BASE = Path(os.environ.get('ANU_BASE', '/srv/anu'))
 GATEWAY = BASE / 'bin' / 'anu-command-gateway.py'
 DB_FILE = BASE / 'brain' / 'anu-brain.db'
 LOG_FILE = BASE / 'logs' / 'anu-mutations.jsonl'
 CHECKPOINT_ROOT = BASE / 'checkpoints' / 'mutations'
 WORKSPACE = BASE / 'workspace' / 'projects'
 EXECUTION_LOCK_FILE = BASE / 'runtime' / 'anu-execution.lock'
+PATHS_MODULE = BASE / 'bin' / 'anu-project-paths-v0.1.py'
+DB_MODULE = BASE / 'bin' / 'anu-db-v0.1.py'
+
+
+def _load_sibling(path, name):
+    import importlib.util
+    # Prefer checkout sibling when ANU_BASE points elsewhere or live missing.
+    candidates = [path, Path(__file__).resolve().parent / path.name]
+    for candidate in candidates:
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(name, candidate)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError(f'Unable to load {path}')
+
+
+def _paths():
+    return _load_sibling(PATHS_MODULE, 'anu_project_paths_v0_1_sm')
+
+
+def _db_helper():
+    return _load_sibling(DB_MODULE, 'anu_db_v0_1_sm')
 
 
 def now_iso():
@@ -55,42 +78,28 @@ def fail(message, code=1):
 
 
 def resolve_project(project_name):
-    p = Path(project_name)
-    if not project_name or p.is_absolute() or '..' in p.parts:
-        fail('Invalid project path.')
-    project = (WORKSPACE / p).resolve()
+    paths = _paths()
     try:
-        project.relative_to(WORKSPACE.resolve())
-    except ValueError:
-        fail('Project is outside ANU workspace.')
-    if not project.is_dir():
-        fail(f'Project does not exist: {project_name}')
-    return project
+        return paths.resolve_project(WORKSPACE, project_name)
+    except paths.PathValidationError as exc:
+        fail(str(exc))
 
 
 def resolve_file(project, relative_file):
-    p = Path(relative_file)
-    if not relative_file or p.is_absolute() or '..' in p.parts:
-        fail(f'Invalid target file path: {relative_file}')
-    target = (project / p).resolve()
+    paths = _paths()
     try:
-        target.relative_to(project.resolve())
-    except ValueError:
-        fail(f'Target file is outside project: {relative_file}')
-    if not target.is_file():
-        fail(f'Target file does not exist: {relative_file}')
-    return target
+        return paths.resolve_file(project, relative_file)
+    except paths.PathValidationError as exc:
+        fail(str(exc))
 
 
 def resolve_changes_file(project, changes_file):
-    # Absolute paths keep the pre-V0.5.9 contract; relative paths are
-    # resolved inside the project, never against the process working directory.
-    if not changes_file:
-        fail('Invalid changes file path.')
-    p = Path(changes_file)
-    if p.is_absolute():
-        return p
-    return resolve_file(project, changes_file)
+    # F3: absolute paths must still resolve inside the project (no free abs).
+    paths = _paths()
+    try:
+        return paths.resolve_changes_file(project, changes_file)
+    except paths.PathValidationError as exc:
+        fail(str(exc))
 
 
 def sha256_file(path):
@@ -185,13 +194,13 @@ def execution_context(task_id=None):
     parent_task_id = None
     if effective_task_id is not None:
         try:
-            with sqlite3.connect(DB_FILE) as db:
+            with _db_helper().db_connect(DB_FILE) as db:
                 row = db.execute(
                     "SELECT goal_id, parent_task_id FROM tasks WHERE id = ?",
                     (effective_task_id,),
                 ).fetchone()
                 if row:
-                    goal_id, parent_task_id = row
+                    goal_id, parent_task_id = row[0], row[1]
         except Exception:
             pass
 
@@ -207,7 +216,7 @@ def ensure_column(db, table, column, definition):
 def ensure_state():
     CHECKPOINT_ROOT.mkdir(parents=True, exist_ok=True)
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_FILE) as db:
+    with _db_helper().db_connect(DB_FILE) as db:
         # Preserve the user's existing schema and add only missing audit fields.
         ensure_column(db, 'mutation_transactions', 'transaction_id', 'TEXT')
         ensure_column(db, 'mutation_transactions', 'task_id', 'INTEGER')
@@ -251,7 +260,7 @@ def idempotency_key(task_id, project_name, operation, changes):
 def find_committed_transaction(key):
     if key is None:
         return None
-    with sqlite3.connect(DB_FILE) as db:
+    with _db_helper().db_connect(DB_FILE) as db:
         row = db.execute(
             """SELECT transaction_id FROM mutation_transactions
                WHERE idempotency_key = ? AND status = 'COMMITTED'
@@ -273,7 +282,8 @@ def checkpoint_event(transaction_id, task_id, phase, state, metadata):
     if attempt is not None:
         event_metadata["attempt"] = attempt
 
-    with sqlite3.connect(DB_FILE) as db:
+    with _db_helper().db_connect(DB_FILE) as db:
+        db.execute("PRAGMA foreign_keys = ON")
         db.execute(
             """INSERT INTO checkpoints(task_id, phase, state, created_at)
                VALUES (?, ?, ?, ?)""",
@@ -281,10 +291,13 @@ def checkpoint_event(transaction_id, task_id, phase, state, metadata):
         )
         db.execute(
             """INSERT INTO agent_events
-               (task_id, run_id, attempt, event_type, message, metadata, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (task_id, goal_id, parent_task_id, run_id, attempt,
+                event_type, message, metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 task_id,
+                goal_id,
+                parent_task_id,
                 run_id,
                 attempt,
                 "MUTATION_CHECKPOINT",
@@ -338,7 +351,7 @@ def insert_transaction(db, tx):
 
 def record_started(tx):
     """Write-ahead record: every transaction is visible before any file changes."""
-    with sqlite3.connect(DB_FILE) as db:
+    with _db_helper().db_connect(DB_FILE) as db:
         insert_transaction(db, tx)
         db.commit()
 
@@ -347,7 +360,7 @@ def persist(tx):
     with LOG_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(tx, sort_keys=True) + "\n")
 
-    with sqlite3.connect(DB_FILE) as db:
+    with _db_helper().db_connect(DB_FILE) as db:
         updated = db.execute(
             f"""UPDATE mutation_transactions
                 SET {', '.join(f'{c} = ?' for c in TX_COLUMNS)}
@@ -377,12 +390,21 @@ def persist(tx):
         if attempt is not None:
             event_metadata["attempt"] = attempt
 
+        if goal_id is not None:
+            event_metadata["goal_id"] = goal_id
+        if parent_task_id is not None:
+            event_metadata["parent_task_id"] = parent_task_id
+
+        db.execute("PRAGMA foreign_keys = ON")
         db.execute(
             """INSERT INTO agent_events
-               (task_id, run_id, attempt, event_type, message, metadata, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (task_id, goal_id, parent_task_id, run_id, attempt,
+                event_type, message, metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 task_id,
+                goal_id,
+                parent_task_id,
                 run_id,
                 attempt,
                 "MUTATION_TRANSACTION",

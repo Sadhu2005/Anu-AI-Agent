@@ -28,13 +28,30 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
 SAFE_MUTATION = BASE / "bin" / "anu-safe-mutation-v0.2.py"
 TASK_GRAPH = BASE / "bin" / "anu-task-graph-v0.1.py"
 RECOVERY = BASE / "bin" / "anu-recovery-v0.1.py"
 LOG_FILE = BASE / "logs" / "anu-task-engine.jsonl"
 EXECUTION_LOCK_FILE = BASE / "runtime" / "anu-execution.lock"
+_HERE = Path(__file__).resolve().parent
+
+
+def _anu_db():
+    for candidate in (
+        BASE / "bin" / "anu-db-v0.1.py",
+        _HERE / "anu-db-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_db_v0_1_task_engine",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError("anu-db-v0.1.py not found")
 
 TERMINAL = {"completed", "blocked"}
 RETRYABLE = {"failed"}
@@ -84,7 +101,8 @@ def event(task_id, event_type, message, metadata=None):
         f.write(json.dumps(record, sort_keys=True) + "\n")
 
     try:
-        with sqlite3.connect(DB_FILE) as db:
+        helper = _anu_db()
+        with helper.db_connect(DB_FILE) as db:
             goal_id = None
             parent_task_id = None
             if task_id is not None:
@@ -93,7 +111,7 @@ def event(task_id, event_type, message, metadata=None):
                     (task_id,),
                 ).fetchone()
                 if row:
-                    goal_id, parent_task_id = row
+                    goal_id, parent_task_id = row[0], row[1]
 
             db.execute(
                 """INSERT INTO agent_events
@@ -113,12 +131,15 @@ def event(task_id, event_type, message, metadata=None):
                 ),
             )
             db.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        try:
+            _anu_db().note_dropped_event(exc, where="task_engine.event")
+        except Exception:
+            pass
 
 
 def db_connect():
-    return sqlite3.connect(DB_FILE)
+    return _anu_db().db_connect(DB_FILE)
 
 
 def dependency_admission(task_id):

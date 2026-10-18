@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 
 CONFIG_FILE = BASE / "config" / "anu-command-gateway.yaml"
 PROFILE_FILE = BASE / "config" / "anu-execution-profiles.yaml"
@@ -21,6 +21,41 @@ LOG_FILE = BASE / "logs" / "anu-actions.jsonl"
 GOVERNOR = BASE / "bin" / "anu-resource-governor.py"
 SANDBOX_CLIENT = BASE / "bin" / "anu-sandbox-client.py"
 NORMALIZER = BASE / "bin" / "anu-result-normalizer.py"
+STATE_FILE = BASE / "runtime" / "anu-state.json"
+
+
+def host_command_env():
+    """Minimal explicit environment for host commands (review F4)."""
+    home = BASE / "home"
+    return {
+        "PATH": "/usr/bin:/bin",
+        "LANG": os.environ.get("LANG", "C.UTF-8"),
+        "HOME": str(home),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+
+
+def harden_host_argv(command_name, argv):
+    """Inject safe git -c flags for repository-controlled config (F4)."""
+    if not argv:
+        return list(argv)
+    exe = Path(argv[0]).name
+    if exe != "git":
+        return list(argv)
+    hardened = [argv[0], "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
+    rest = list(argv[1:])
+    if command_name in ("git_diff", "git_diff_stat") or (
+        rest and rest[0] == "diff"
+    ):
+        # Insert after subcommand if present.
+        if rest and rest[0] == "diff":
+            rest = ["diff", "--no-ext-diff", "--no-textconv", *rest[1:]]
+        else:
+            rest = ["--no-ext-diff", "--no-textconv", *rest]
+    return hardened + rest
 
 
 def now():
@@ -92,7 +127,23 @@ def write_event(event_type, message, metadata=None):
     })
 
     try:
-        with sqlite3.connect(DB_FILE) as db:
+        import importlib.util as _ilu
+        _db_mod = None
+        for _cand in (
+            BASE / "bin" / "anu-db-v0.1.py",
+            Path(__file__).resolve().parent / "anu-db-v0.1.py",
+        ):
+            if _cand.is_file():
+                _spec = _ilu.spec_from_file_location(
+                    "anu_db_v0_1_gateway",
+                    _cand,
+                )
+                _db_mod = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_db_mod)
+                break
+        if _db_mod is None:
+            raise RuntimeError("anu-db-v0.1.py not found")
+        with _db_mod.db_connect(DB_FILE) as db:
             goal_id = None
             parent_task_id = None
             if task_id is not None:
@@ -101,7 +152,7 @@ def write_event(event_type, message, metadata=None):
                     (task_id,),
                 ).fetchone()
                 if row:
-                    goal_id, parent_task_id = row
+                    goal_id, parent_task_id = row[0], row[1]
 
             db.execute(
                 """
@@ -123,8 +174,30 @@ def write_event(event_type, message, metadata=None):
                 ),
             )
             db.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        try:
+            import importlib.util as _ilu2
+            for _cand2 in (
+                BASE / "bin" / "anu-db-v0.1.py",
+                Path(__file__).resolve().parent / "anu-db-v0.1.py",
+            ):
+                if _cand2.is_file():
+                    _spec2 = _ilu2.spec_from_file_location(
+                        "anu_db_v0_1_gateway_drop",
+                        _cand2,
+                    )
+                    _mod2 = _ilu2.module_from_spec(_spec2)
+                    _spec2.loader.exec_module(_mod2)
+                    _mod2.note_dropped_event(
+                        exc, where="command_gateway.write_event"
+                    )
+                    break
+        except Exception:
+            print(
+                f"ANU_DROPPED_EVENT where=command_gateway.write_event: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
 
 def resolve_project(workspace, project):
     if project is None:
@@ -809,6 +882,21 @@ COMMANDS = {
 }
 
 
+def assert_allowlist_aligned(config):
+    """Fail closed when YAML allowed_commands drifts from COMMANDS (F13)."""
+    allowed = config.get("allowed_commands") or {}
+    if not isinstance(allowed, dict):
+        raise RuntimeError("gateway allowed_commands must be a mapping")
+    yaml_names = set(allowed.keys())
+    code_names = set(COMMANDS.keys())
+    if yaml_names != code_names:
+        raise RuntimeError(
+            "allow-list drift between YAML and COMMANDS: "
+            f"only_in_yaml={sorted(yaml_names - code_names)} "
+            f"only_in_code={sorted(code_names - yaml_names)}"
+        )
+
+
 def cmd_status(config):
     gateway = config.get("gateway", {})
     resource = config.get("resource_control", {})
@@ -950,10 +1038,13 @@ def cmd_run(config, command_name, project, task_id=None):
             task_id=task_id,
         )
 
-    argv = [
-        definition["executable"],
-        *definition["argv"],
-    ]
+    argv = harden_host_argv(
+        command_name,
+        [
+            definition["executable"],
+            *definition["argv"],
+        ],
+    )
 
     timeout_seconds = int(
         profile["timeout_seconds"]
@@ -980,6 +1071,7 @@ def cmd_run(config, command_name, project, task_id=None):
         capture_output=True,
         timeout=timeout_seconds,
         shell=False,
+        env=host_command_env(),
     )
 
     stdout = process.stdout.decode(
@@ -1109,6 +1201,7 @@ def main():
     args = parser.parse_args()
 
     config = load_yaml(CONFIG_FILE)
+    assert_allowlist_aligned(config)
 
     if args.action == "status":
         cmd_status(config)

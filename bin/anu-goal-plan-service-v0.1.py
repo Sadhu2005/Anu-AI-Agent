@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 import uuid
@@ -18,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
 _HERE = Path(__file__).resolve().parent
 _LIVE_MODEL = BASE / "bin" / "anu-agent-model-v0.1.py"
@@ -38,12 +39,24 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _anu_db():
+    for candidate in (
+        BASE / "bin" / "anu-db-v0.1.py",
+        _HERE / "anu-db-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_db_v0_1_plan_service",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError("anu-db-v0.1.py not found")
+
+
 def db_connect(db_path=None):
-    path = Path(db_path) if db_path is not None else DB_FILE
-    db = sqlite3.connect(str(path))
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys = ON")
-    return db
+    return _anu_db().db_connect(db_path if db_path is not None else DB_FILE)
 
 
 def _require_db(db):
@@ -111,8 +124,19 @@ def migrate(db):
 
         CREATE INDEX IF NOT EXISTS idx_goal_plans_goal_status
             ON goal_plans(goal_id, status);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_goal_plans_one_active
+            ON goal_plans(goal_id)
+            WHERE status = 'active';
         """
     )
+    # F15: optional abandon/replan reason column (idempotent).
+    cols = {
+        row[1]
+        for row in db.execute("PRAGMA table_info(goal_plans)").fetchall()
+    }
+    if "reason" not in cols:
+        db.execute("ALTER TABLE goal_plans ADD COLUMN reason TEXT")
     db.commit()
 
 
@@ -195,15 +219,45 @@ def _validate_plan_body(plan_dict, goal_id):
     return agent_plan.to_dict()
 
 
-def save_plan(db, goal_id, plan, status="active"):
+def _emit_plan_event(db, goal_id, event_type, message, metadata=None):
+    """Best-effort plan lifecycle audit; must not undo plan writes."""
+    metadata = metadata or {}
+    try:
+        db.execute(
+            """INSERT INTO agent_events
+                   (task_id, goal_id, parent_task_id, run_id, attempt,
+                    event_type, message, metadata, created_at)
+               VALUES (NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?)""",
+            (
+                goal_id,
+                event_type,
+                message,
+                json.dumps(metadata, sort_keys=True),
+                now_iso(),
+            ),
+        )
+    except Exception as exc:
+        try:
+            _anu_db().note_dropped_event(exc, where="plan_service.event")
+        except Exception:
+            print(
+                f"ANU_DROPPED_EVENT where=plan_service.event: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+
+def save_plan(db, goal_id, plan, status="active", reason=None):
     """Persist a new plan version for a goal.
 
     If ``status`` is ``active``, any current active plan for the goal is
-    marked ``superseded`` in the same transaction.
+    marked ``superseded`` in the same transaction (F5: BEGIN IMMEDIATE).
     """
     db = _require_db(db)
     goal_id = _validate_goal_id(goal_id)
     status = _validate_status(status)
+    if reason is not None and not isinstance(reason, str):
+        raise TypeError("reason must be a string or None")
 
     if not _goal_exists(db, goal_id):
         raise ValueError(f"goal does not exist: goal_id={goal_id}")
@@ -211,42 +265,90 @@ def save_plan(db, goal_id, plan, status="active"):
     body = _validate_plan_body(_coerce_plan_dict(plan), goal_id)
     plan_id = _validate_plan_id(body["plan_id"])
 
-    existing = db.execute(
-        "SELECT id FROM goal_plans WHERE plan_id = ?",
-        (plan_id,),
-    ).fetchone()
-    if existing is not None:
-        raise ValueError(f"plan_id already exists: {plan_id}")
+    try:
+        db.execute("BEGIN IMMEDIATE")
 
-    row = db.execute(
-        "SELECT COALESCE(MAX(version), 0) FROM goal_plans WHERE goal_id = ?",
-        (goal_id,),
-    ).fetchone()
-    next_version = int(row[0]) + 1
+        existing = db.execute(
+            "SELECT id FROM goal_plans WHERE plan_id = ?",
+            (plan_id,),
+        ).fetchone()
+        if existing is not None:
+            raise ValueError(f"plan_id already exists: {plan_id}")
 
-    if status == "active":
-        db.execute(
-            """UPDATE goal_plans
-               SET status = 'superseded'
-               WHERE goal_id = ? AND status = 'active'""",
+        row = db.execute(
+            "SELECT COALESCE(MAX(version), 0) FROM goal_plans WHERE goal_id = ?",
             (goal_id,),
-        )
+        ).fetchone()
+        next_version = int(row[0]) + 1
 
-    cur = db.execute(
-        """INSERT INTO goal_plans(
-               goal_id, plan_id, version, status, body_json, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?)""",
-        (
+        superseded_ids = []
+        if status == "active":
+            prev = db.execute(
+                """SELECT id, plan_id FROM goal_plans
+                   WHERE goal_id = ? AND status = 'active'""",
+                (goal_id,),
+            ).fetchall()
+            for item in prev:
+                superseded_ids.append(
+                    item["id"] if hasattr(item, "keys") else item[0]
+                )
+            db.execute(
+                """UPDATE goal_plans
+                   SET status = 'superseded',
+                       reason = COALESCE(?, reason)
+                   WHERE goal_id = ? AND status = 'active'""",
+                (reason, goal_id),
+            )
+
+        cur = db.execute(
+            """INSERT INTO goal_plans(
+                   goal_id, plan_id, version, status, body_json, created_at,
+                   reason
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                goal_id,
+                plan_id,
+                next_version,
+                status,
+                json.dumps(body, sort_keys=True),
+                now_iso(),
+                reason,
+            ),
+        )
+        row_id = cur.lastrowid
+        for old_id in superseded_ids:
+            _emit_plan_event(
+                db,
+                goal_id,
+                "PLAN_SUPERSEDED",
+                f"plan row {old_id} superseded by {plan_id}",
+                {
+                    "goal_id": goal_id,
+                    "old_row_id": old_id,
+                    "new_plan_id": plan_id,
+                    "reason": reason,
+                },
+            )
+        _emit_plan_event(
+            db,
             goal_id,
-            plan_id,
-            next_version,
-            status,
-            json.dumps(body, sort_keys=True),
-            now_iso(),
-        ),
-    )
-    row_id = cur.lastrowid
-    db.commit()
+            "PLAN_SAVED",
+            f"plan {plan_id} v{next_version} status={status}",
+            {
+                "goal_id": goal_id,
+                "plan_id": plan_id,
+                "version": next_version,
+                "status": status,
+                "reason": reason,
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
 
     return get_plan_by_row_id(db, row_id)
 
@@ -312,17 +414,38 @@ def abandon_active_plan(db, goal_id, reason=None):
     """Mark the active plan abandoned (no replacement)."""
     db = _require_db(db)
     goal_id = _validate_goal_id(goal_id)
+    if reason is not None and not isinstance(reason, str):
+        raise TypeError("reason must be a string or None")
     active = get_active_plan(db, goal_id)
     if active is None:
         raise ValueError(f"no active plan for goal_id={goal_id}")
 
-    db.execute(
-        """UPDATE goal_plans SET status = 'abandoned' WHERE id = ?""",
-        (active["id"],),
-    )
-    db.commit()
-    # reason reserved for events in a later step
-    _ = reason
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            """UPDATE goal_plans
+               SET status = 'abandoned', reason = ?
+               WHERE id = ?""",
+            (reason, active["id"]),
+        )
+        _emit_plan_event(
+            db,
+            goal_id,
+            "PLAN_ABANDONED",
+            f"plan {active['plan_id']} abandoned",
+            {
+                "goal_id": goal_id,
+                "plan_id": active["plan_id"],
+                "reason": reason,
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
     return get_plan_by_row_id(db, active["id"])
 
 

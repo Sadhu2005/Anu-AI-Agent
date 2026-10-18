@@ -46,10 +46,16 @@ def test_require_denies_unknown_and_disabled():
     registry = reg_mod.CapabilityRegistry.from_files(GATEWAY, PROFILES)
 
     try:
-        registry.require("filesystem.write")
+        registry.require("not.a.real.capability")
         raise AssertionError("unknown capability should deny")
     except PermissionError as exc:
         assert "unknown capability" in str(exc)
+
+    try:
+        registry.require("filesystem.write")
+        raise AssertionError("deferred capability should deny as disabled")
+    except PermissionError as exc:
+        assert "disabled" in str(exc)
 
     try:
         registry.require("research")

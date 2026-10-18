@@ -18,17 +18,22 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
 _HERE = Path(__file__).resolve().parent
 
 TERMINAL_SUCCESS = "completed"
 TERMINAL_BLOCKED = "blocked"
+IGNORED_TASK_STATUSES = frozenset({
+    "superseded",
+    "cancelled",
+})
 ACTIVE_TASK_STATUSES = frozenset({
     "pending",
     "ready",
@@ -40,6 +45,20 @@ ACTIVE_TASK_STATUSES = frozenset({
 
 
 def db_connect(db_path=None):
+    for candidate in (
+        BASE / "bin" / "anu-db-v0.1.py",
+        _HERE / "anu-db-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_db_v0_1_aggregator",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.db_connect(
+                db_path if db_path is not None else DB_FILE
+            )
     path = Path(db_path) if db_path is not None else DB_FILE
     db = sqlite3.connect(str(path))
     db.row_factory = sqlite3.Row
@@ -112,16 +131,18 @@ def derive_goal_status(task_statuses):
     statuses = []
     for item in task_statuses:
         if isinstance(item, str):
-            statuses.append(item)
+            status = item
         elif isinstance(item, dict):
             status = item.get("status")
             if not isinstance(status, str):
                 raise TypeError("task status must be a string")
-            statuses.append(status)
         else:
             raise TypeError(
                 "task_statuses items must be strings or dicts"
             )
+        if status in IGNORED_TASK_STATUSES:
+            continue
+        statuses.append(status)
 
     if not statuses:
         return None
@@ -181,6 +202,7 @@ def sync_goal_status(db, goal_id, force=False):
         goal_id,
         derived,
         reason=f"derived from {len(tasks)} tasks",
+        force=force,
     )
     summary["changed"] = True
     summary["after"] = updated["status"]

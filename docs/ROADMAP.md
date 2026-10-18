@@ -35,7 +35,9 @@ V0.5.8       ████████████████████  100%
 V0.5.9       ████████████████████  100%
 V0.6.0       ████████████████████  100%
 V0.6.1       ████████████████████  100%
-V0.6.2–.9    ░░░░░░░░░░░░░░░░░░░░  0%
+V0.6.1b      ████████████████████  hardening (on v0.6.2-integration)
+V0.6.2       ████████░░░░░░░░░░░░  ~40% (registry, invoke, P0/P1 tests)
+V0.6.3–.9    ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
 
@@ -85,8 +87,15 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.6.1](versions/v0.6.1.md): Goal → Plan → Task Graph. A goal expands
-into a dependent task graph on top of recoverable execution.
+[V0.6.2](versions/v0.6.2.md): Capabilities — policy-checked invoke through
+the registry and gateway, with V0.6.1b boundary hardening complete.
+
+## Model gateway (separate release)
+
+The API-first **`anu-model-gateway`** service ([MODEL-STRATEGY.md](MODEL-STRATEGY.md),
+ADR-011) remains **its own release** after [V0.6.5](versions/v0.6.5.md) /
+[V0.6.7](versions/v0.6.7.md) capability and approval work — not bundled into
+those version tags (review §8).
 
 ## Beyond V0.7.0
 

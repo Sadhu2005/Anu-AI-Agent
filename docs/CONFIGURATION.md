@@ -4,6 +4,10 @@ All configuration lives in `config/` (deployed to `/srv/anu/config`, read-only
 for ANU). Values here are the versions in git. The Pi may differ until the
 next deployment.
 
+Runtime paths on device default to **`ANU_BASE=/srv/anu`** when set in the
+environment; several V0.6.1b+ modules (`anu-db-v0.1.py`, goal services,
+capability registry, sandboxd) read it for Brain and workspace locations.
+
 ## Overview
 
 | File | Read by | Purpose |
@@ -83,6 +87,7 @@ All profiles: `network: false`.
 | User | `999:984` |
 | Workspace mount | read-only at `/workspace` |
 | Operations | `python_test` (`python -m unittest discover -v /workspace`), `python_compile` (compile all `.py` in memory) |
+| Image pull at run | **`never`** (`docker run --pull never` in `anu-sandboxd.py`) |
 
 ## `anu-executor.yaml`
 

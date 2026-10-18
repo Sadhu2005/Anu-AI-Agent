@@ -12,15 +12,18 @@ This module does not invent schema. It uses the live Brain columns:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
+import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
+_HERE = Path(__file__).resolve().parent
 
 GOAL_STATUSES = frozenset({
     "pending",
@@ -31,18 +34,40 @@ GOAL_STATUSES = frozenset({
     "cancelled",
 })
 
+# F15: allowed goal status transitions (same status always ok).
+GOAL_TRANSITIONS = {
+    "pending": frozenset({"active", "blocked", "completed", "failed", "cancelled"}),
+    "active": frozenset({"blocked", "completed", "failed", "cancelled"}),
+    "blocked": frozenset({"active", "completed", "failed", "cancelled"}),
+    "failed": frozenset({"active", "blocked", "cancelled"}),
+    "completed": frozenset(),
+    "cancelled": frozenset(),
+}
+
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _anu_db():
+    for candidate in (
+        BASE / "bin" / "anu-db-v0.1.py",
+        _HERE / "anu-db-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_db_v0_1_goal_service",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError("anu-db-v0.1.py not found")
+
+
 def db_connect(db_path=None):
     """Open a Brain connection with foreign keys enforced."""
-    path = Path(db_path) if db_path is not None else DB_FILE
-    db = sqlite3.connect(str(path))
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys = ON")
-    return db
+    return _anu_db().db_connect(db_path if db_path is not None else DB_FILE)
 
 
 def _require_db(db):
@@ -111,8 +136,16 @@ def _project_exists(db, project_id):
     return row is not None
 
 
-def _emit_goal_event(db, goal_id, event_type, message, metadata=None):
-    """Best-effort Brain event. Failures must not undo the goal write."""
+def _emit_goal_event(
+    db,
+    goal_id,
+    event_type,
+    message,
+    metadata=None,
+    *,
+    commit=True,
+):
+    """Insert a Brain event. When ``commit`` is False, caller owns the txn."""
     metadata = metadata or {}
     try:
         db.execute(
@@ -128,12 +161,35 @@ def _emit_goal_event(db, goal_id, event_type, message, metadata=None):
                 now_iso(),
             ),
         )
-        db.commit()
-    except Exception:
+        if commit:
+            db.commit()
+    except Exception as exc:
+        if commit:
+            try:
+                db.rollback()
+            except Exception:
+                pass
         try:
-            db.rollback()
+            _anu_db().note_dropped_event(exc, where="goal_service.event")
         except Exception:
-            pass
+            print(
+                f"ANU_DROPPED_EVENT where=goal_service.event: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+        if not commit:
+            raise
+
+
+def _assert_transition(from_status, to_status):
+    if from_status == to_status:
+        return
+    allowed = GOAL_TRANSITIONS.get(from_status, frozenset())
+    if to_status not in allowed:
+        raise ValueError(
+            f"invalid goal transition: {from_status!r} -> {to_status!r}; "
+            f"allowed={sorted(allowed)}"
+        )
 
 
 def create_goal(db, description, project_id=None, status="pending"):
@@ -146,26 +202,34 @@ def create_goal(db, description, project_id=None, status="pending"):
     if project_id is not None and not _project_exists(db, project_id):
         raise ValueError(f"project does not exist: project_id={project_id}")
 
-    cur = db.execute(
-        """INSERT INTO goals(project_id, description, status)
-           VALUES (?, ?, ?)""",
-        (project_id, description, status),
-    )
-    goal_id = cur.lastrowid
-    db.commit()
-
-    _emit_goal_event(
-        db,
-        goal_id,
-        "GOAL_CREATED",
-        f"goal {goal_id}: {status}",
-        {
-            "goal_id": goal_id,
-            "project_id": project_id,
-            "status": status,
-            "description": description,
-        },
-    )
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        cur = db.execute(
+            """INSERT INTO goals(project_id, description, status)
+               VALUES (?, ?, ?)""",
+            (project_id, description, status),
+        )
+        goal_id = cur.lastrowid
+        _emit_goal_event(
+            db,
+            goal_id,
+            "GOAL_CREATED",
+            f"goal {goal_id}: {status}",
+            {
+                "goal_id": goal_id,
+                "project_id": project_id,
+                "status": status,
+                "description": description,
+            },
+            commit=False,
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
 
     return get_goal(db, goal_id)
 
@@ -213,8 +277,12 @@ def list_goals(db, project_id=None, status=None, limit=100):
     return [_row_to_goal(row) for row in rows]
 
 
-def update_goal_status(db, goal_id, status, reason=None):
-    """Set goal status. Returns the updated record."""
+def update_goal_status(db, goal_id, status, reason=None, force=False):
+    """Set goal status. Returns the updated record.
+
+    Goal row update and GOAL_STATUS_CHANGED event share one transaction (F8).
+    ``force=True`` bypasses transition rules (aggregator cancel override).
+    """
     db = _require_db(db)
     goal_id = _validate_goal_id(goal_id)
     status = _validate_status(status)
@@ -229,11 +297,8 @@ def update_goal_status(db, goal_id, status, reason=None):
     if existing["status"] == status:
         return existing
 
-    db.execute(
-        "UPDATE goals SET status = ? WHERE id = ?",
-        (status, goal_id),
-    )
-    db.commit()
+    if not force:
+        _assert_transition(existing["status"], status)
 
     metadata = {
         "goal_id": goal_id,
@@ -243,13 +308,27 @@ def update_goal_status(db, goal_id, status, reason=None):
     if reason is not None:
         metadata["reason"] = reason
 
-    _emit_goal_event(
-        db,
-        goal_id,
-        "GOAL_STATUS_CHANGED",
-        f"goal {goal_id}: {existing['status']} -> {status}",
-        metadata,
-    )
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            "UPDATE goals SET status = ? WHERE id = ?",
+            (status, goal_id),
+        )
+        _emit_goal_event(
+            db,
+            goal_id,
+            "GOAL_STATUS_CHANGED",
+            f"goal {goal_id}: {existing['status']} -> {status}",
+            metadata,
+            commit=False,
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
 
     return get_goal(db, goal_id)
 

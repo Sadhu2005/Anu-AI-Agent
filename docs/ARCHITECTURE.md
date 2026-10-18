@@ -77,7 +77,10 @@ WAITING  ──►  re-wake later
 | Adapters | `bin/anu-agent-task-adapter-v0.1.py`, `-bridge-`, `-execution-adapter-`, `-execution-runtime-` | Convert tasks ↔ agent goals and carry results back |
 | Task engine | `bin/anu-task-engine-v0.5.3.py` | Task lifecycle, attempts (max 3), dependency admission; delegates changes to Safe Mutation |
 | Safe mutation | `bin/anu-safe-mutation-v0.2.py` | Checkpoint → apply changes → verify → commit or rollback |
-| Gateway | `bin/anu-command-gateway.py` | Allow-listed commands only (e.g. `python_test`, `git_status`) |
+| Capability registry | `bin/anu-capability-registry-v0.1.py` | Named capabilities (V0.6.2): policy, audit, `invoke` → gateway `run` |
+| Gateway | `bin/anu-command-gateway.py` | Allow-listed commands only (e.g. `python_test`, hardened `git_status`) |
+| Brain DB helper | `bin/anu-db-v0.1.py` | Shared `db_connect`, foreign keys, dropped-event stderr (F7/F8) |
+| Project paths | `bin/anu-project-paths-v0.1.py` | Mutation path boundary validation (F3) |
 | Executor | `bin/anu-executor.py` | Runs commands under an execution profile (RAM, timeout, output limits) |
 | Sandbox | `bin/anu-sandboxd.py`, `bin/anu-sandbox-client.py` | Root daemon; the only path from ANU to Docker-isolated execution (`python-sandbox` profile) |
 
@@ -136,8 +139,12 @@ workloads pause at 65 °C.
 Docker directly**: it has no Docker socket access and cannot start containers.
 Code is still executed inside Docker, but **only** through the root
 `anu-sandboxd` service, via the `python-sandbox` execution profile (no network,
-512 MB RAM, 120 s timeout). The sandbox daemon is the single, controlled bridge
-between ANU and Docker.
+512 MB RAM, 120 s timeout). Container runs use `docker run --pull never` so
+images cannot be pulled at invoke time. The sandbox daemon is the single,
+controlled bridge between ANU and Docker.
+
+Install and checkout paths honor **`ANU_BASE`** (default `/srv/anu`) across
+Brain writers and boundary modules so tests can use an isolated tree.
 
 ## Target Architecture (V0.7.0)
 

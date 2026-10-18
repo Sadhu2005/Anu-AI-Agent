@@ -94,15 +94,16 @@ def test_deny_unknown_and_disabled_audits():
     path, db = make_db()
     try:
         unknown = registry.evaluate_request(
-            "filesystem.write",
+            "not.a.real.capability",
             {"project": "sandbox-test-project"},
             db=db,
         )
         assert unknown["admitted"] is False
         assert unknown["denial_class"] == "unknown"
 
+        # filesystem.write is deferred (disabled), not merely unknown.
         disabled = registry.evaluate_request(
-            "research",
+            "filesystem.write",
             {"project": "sandbox-test-project"},
             db=db,
         )

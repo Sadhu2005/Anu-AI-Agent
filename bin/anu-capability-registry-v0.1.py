@@ -14,8 +14,11 @@ This module does not execute tools. It answers:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
+import os
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,13 +26,14 @@ from pathlib import Path
 import yaml
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parent
 
 GATEWAY_CONFIG = BASE / "config" / "anu-command-gateway.yaml"
 PROFILE_CONFIG = BASE / "config" / "anu-execution-profiles.yaml"
 DB_FILE = BASE / "brain" / "anu-brain.db"
+GATEWAY_BIN = BASE / "bin" / "anu-command-gateway.py"
 
 
 def now_iso():
@@ -80,11 +84,33 @@ def audit_capability_event(
         )
         db.commit()
         return True
-    except Exception:
+    except Exception as exc:
         try:
             db.rollback()
         except Exception:
             pass
+        try:
+            for candidate in (
+                BASE / "bin" / "anu-db-v0.1.py",
+                _HERE / "anu-db-v0.1.py",
+            ):
+                if candidate.is_file():
+                    spec = importlib.util.spec_from_file_location(
+                        "anu_db_v0_1_cap_audit",
+                        candidate,
+                    )
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    mod.note_dropped_event(
+                        exc, where="capability_registry.audit"
+                    )
+                    break
+        except Exception:
+            print(
+                f"ANU_DROPPED_EVENT where=capability_registry.audit: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
         return False
 
 # Friendly capability names from the V0.6.2 design map onto gateway commands.
@@ -114,7 +140,12 @@ SANDBOX_COMMAND_SPECS = {
 }
 
 # research / browser stay unregistered until V0.6.7 approval exists.
-DISABLED_CAPABILITIES = frozenset({"research", "browser"})
+# filesystem.write deferred until executor reuse + F3 complete.
+DISABLED_CAPABILITIES = frozenset({
+    "research",
+    "browser",
+    "filesystem.write",
+})
 
 
 def _default_gateway_path():
@@ -452,6 +483,138 @@ class CapabilityRegistry:
             )
         return decision
 
+    def invoke(
+        self,
+        name,
+        arguments=None,
+        *,
+        db=None,
+        task_id=None,
+        goal_id=None,
+        gateway_bin=None,
+    ):
+        """Evaluate then run the gateway command (V0.6.2 step 3).
+
+        Profile timeout/output limits are enforced by the gateway ``run``
+        path (step 4). Host git uses hardened env/argv (F4).
+        """
+        decision = self.evaluate_request(
+            name,
+            arguments,
+            db=db,
+            task_id=task_id,
+            goal_id=goal_id,
+        )
+        if not decision.get("admitted"):
+            return {
+                "ok": False,
+                "admitted": False,
+                "decision": decision,
+            }
+
+        command = decision["command"]
+        project = decision["arguments"]["project"]
+        invoke_task_id = (
+            task_id
+            if task_id is not None
+            else decision["arguments"].get("task_id")
+        )
+
+        gateway = Path(gateway_bin) if gateway_bin else None
+        if gateway is None or not gateway.is_file():
+            for candidate in (
+                GATEWAY_BIN,
+                _HERE / "anu-command-gateway.py",
+                _REPO / "bin" / "anu-command-gateway.py",
+            ):
+                if candidate.is_file():
+                    gateway = candidate
+                    break
+        if gateway is None or not gateway.is_file():
+            result = {
+                "ok": False,
+                "admitted": True,
+                "error": "command gateway binary not found",
+                "decision": decision,
+            }
+            if db is not None:
+                audit_capability_event(
+                    db,
+                    "CAPABILITY_RESULT",
+                    f"capability invoke failed: {name}",
+                    result,
+                    task_id=invoke_task_id,
+                    goal_id=goal_id,
+                )
+            return result
+
+        argv = [
+            sys.executable,
+            str(gateway),
+            "run",
+            command,
+            "--project",
+            project,
+        ]
+        if invoke_task_id is not None:
+            argv.extend(["--task-id", str(invoke_task_id)])
+
+        try:
+            proc = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            stdout = proc.stdout or ""
+            stderr = proc.stderr or ""
+            parsed = None
+            try:
+                parsed = json.loads(stdout)
+            except Exception:
+                parsed = None
+            ok = bool(parsed and parsed.get("ok")) if parsed else (
+                proc.returncode == 0
+            )
+            result = {
+                "ok": ok,
+                "admitted": True,
+                "decision": decision,
+                "gateway_exit_code": proc.returncode,
+                "gateway_result": parsed,
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+        except Exception as exc:
+            result = {
+                "ok": False,
+                "admitted": True,
+                "error": str(exc),
+                "decision": decision,
+            }
+
+        if db is not None:
+            audit_capability_event(
+                db,
+                "CAPABILITY_RESULT",
+                (
+                    f"capability result: {name} "
+                    f"ok={result.get('ok')}"
+                ),
+                {
+                    "capability": name,
+                    "command": command,
+                    "project": project,
+                    "ok": result.get("ok"),
+                    "gateway_exit_code": result.get("gateway_exit_code"),
+                    "error": result.get("error"),
+                    "profile": decision.get("profile"),
+                },
+                task_id=invoke_task_id,
+                goal_id=goal_id,
+            )
+        return result
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
@@ -479,6 +642,12 @@ def main(argv=None):
     admit_p.add_argument("--project", required=True)
     admit_p.add_argument("--task-id", type=int, default=None)
     admit_p.add_argument("--goal-id", type=int, default=None)
+
+    inv_p = sub.add_parser("invoke")
+    inv_p.add_argument("--name", required=True)
+    inv_p.add_argument("--project", required=True)
+    inv_p.add_argument("--task-id", type=int, default=None)
+    inv_p.add_argument("--goal-id", type=int, default=None)
 
     args = parser.parse_args(argv)
     registry = CapabilityRegistry.from_files(
@@ -518,23 +687,50 @@ def main(argv=None):
             return 1
         print(json.dumps({"ok": True, "result": result}, indent=2))
         return 0
-    if args.cmd == "admit":
+    if args.cmd in ("admit", "invoke"):
         db = None
         db_path = args.db or (str(DB_FILE) if DB_FILE.is_file() else None)
         if db_path:
-            db = sqlite3.connect(db_path)
-            db.row_factory = sqlite3.Row
-            db.execute("PRAGMA foreign_keys = ON")
+            try:
+                for candidate in (
+                    BASE / "bin" / "anu-db-v0.1.py",
+                    _HERE / "anu-db-v0.1.py",
+                ):
+                    if candidate.is_file():
+                        spec = importlib.util.spec_from_file_location(
+                            "anu_db_v0_1_cap_cli",
+                            candidate,
+                        )
+                        mod = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(mod)
+                        db = mod.db_connect(db_path)
+                        break
+            except Exception:
+                db = None
+            if db is None:
+                db = sqlite3.connect(db_path)
+                db.row_factory = sqlite3.Row
+                db.execute("PRAGMA foreign_keys = ON")
         try:
-            decision = registry.evaluate_request(
+            if args.cmd == "admit":
+                decision = registry.evaluate_request(
+                    args.name,
+                    {"project": args.project, "task_id": args.task_id},
+                    db=db,
+                    task_id=args.task_id,
+                    goal_id=args.goal_id,
+                )
+                print(json.dumps({"ok": True, "decision": decision}, indent=2))
+                return 0 if decision.get("admitted") else 1
+            result = registry.invoke(
                 args.name,
                 {"project": args.project, "task_id": args.task_id},
                 db=db,
                 task_id=args.task_id,
                 goal_id=args.goal_id,
             )
-            print(json.dumps({"ok": True, "decision": decision}, indent=2))
-            return 0 if decision.get("admitted") else 1
+            print(json.dumps({"ok": bool(result.get("ok")), "result": result}, indent=2))
+            return 0 if result.get("ok") else 1
         finally:
             if db is not None:
                 db.close()

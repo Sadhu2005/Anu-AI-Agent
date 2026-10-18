@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  py-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: py_compile bin and tests
+        run: |
+          python -m py_compile bin/*.py tests/*.py tools/*.py
+
+  portable-tests:
+    runs-on: ubuntu-latest
+    needs: py-compile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: V0.6.2 regression pack
+        run: python tests/run_v0_6_2_regression.py
+
+  config-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: YAML lint config
+        run: |
+          if command -v yamllint >/dev/null 2>&1; then
+            yamllint -d relaxed config/*.yaml
+          else
+            python - <<'PY'
+          import sys
+          from pathlib import Path
+          try:
+              import yaml
+          except ImportError:
+              print("skip: no yamllint or PyYAML")
+              sys.exit(0)
+          for path in sorted(Path("config").glob("*.yaml")):
+              yaml.safe_load(path.read_text(encoding="utf-8"))
+              print(f"ok {path}")
+          PY
+          fi
+
+  secret-pattern:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Obvious secret patterns
+        run: |
+          set -e
+          if rg -n \
+            -e 'AKIA[0-9A-Z]{16}' \
+            -e 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY' \
+            -e 'ghp_[A-Za-z0-9]{20,}' \
+            -e 'sk-[A-Za-z0-9]{20,}' \
+            --glob '!.git' --glob '!*.md' .; then
+            echo "SECRET_PATTERN_FAIL"
+            exit 1
+          fi
+          echo "SECRET_PATTERN ok"
+
+  doc-config-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: CONFIGURATION vs bin drift
+        run: python tools/check_doc_config_drift.py
+
+  doc-links:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Markdown link existence (docs/versions)
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          root = Path(".")
+          versions = Path("docs/versions")
+          link_re = re.compile(r"\]\(([^)#]+)")
+          missing = []
+          for md in sorted(versions.glob("*.md")):
+              text = md.read_text(encoding="utf-8")
+              for target in link_re.findall(text):
+                  if target.startswith("http"):
+                      continue
+                  resolved = (md.parent / target).resolve()
+                  try:
+                      resolved.relative_to(root.resolve())
+                  except ValueError:
+                      continue
+                  if not resolved.is_file():
+                      missing.append(f"{md}: {target}")
+          if missing:
+              print("DOC_LINK_WARN missing local targets:")
+              for line in missing:
+                  print(" ", line)
+              raise SystemExit(1)
+          print("DOC_LINKS ok")
+          PY

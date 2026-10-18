@@ -78,27 +78,75 @@ def fail(message, code=1):
     raise SystemExit(code)
 
 
-def _require_project_registered(project_name):
-    """V0.6.4: refuse mutation on unregistered projects when rule enabled."""
+def _load_project_intelligence():
     try:
-        pi = _load_sibling(
+        return _load_sibling(
             BASE / 'bin' / 'anu-project-intelligence-v0.1.py',
             'anu_project_intelligence_v0_1_sm',
         )
     except Exception:
-        # Prefer checkout sibling.
-        try:
-            pi = _load_sibling(
-                Path(__file__).resolve().parent / 'anu-project-intelligence-v0.1.py',
-                'anu_project_intelligence_v0_1_sm',
-            )
-        except Exception:
-            return
+        return _load_sibling(
+            Path(__file__).resolve().parent / 'anu-project-intelligence-v0.1.py',
+            'anu_project_intelligence_v0_1_sm',
+        )
+
+
+def _require_project_registered(project_name):
+    """V0.6.4: refuse mutation on unregistered projects when rule enabled."""
+    try:
+        pi = _load_project_intelligence()
+    except Exception:
+        return
     try:
         pi.require_registered(project_name)
     except Exception as exc:
         # ProjectRegistrationError and path errors.
         fail(str(exc))
+
+
+def _lookup_goal_id(task_id):
+    if task_id is None:
+        return None
+    try:
+        with _db_helper().db_connect(DB_FILE) as db:
+            row = db.execute(
+                'SELECT goal_id FROM tasks WHERE id = ?',
+                (task_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return row[0] if not hasattr(row, 'keys') else row['goal_id']
+    except Exception:
+        return None
+
+
+def _gate_production_deployment(task_id=None, proposed_change=None):
+    """V0.7.0: pause production-impacting mutations until approved."""
+    try:
+        pi = _load_project_intelligence()
+    except Exception as exc:
+        fail(f'production gate unavailable: {exc}')
+    goal_id = _lookup_goal_id(task_id)
+    try:
+        with _db_helper().db_connect(DB_FILE) as db:
+            result = pi.gate_production_deployment(
+                db,
+                task_id=task_id,
+                goal_id=goal_id,
+                proposed_change=proposed_change,
+            )
+    except Exception as exc:
+        # ApprovalDeniedError and unexpected failures abort closed.
+        fail(f'production deployment denied: {exc}')
+    if not isinstance(result, dict):
+        return result
+    if str(result.get('classification', '')).upper() == 'APPROVAL':
+        approval = result.get('approval') or {}
+        fail(
+            'production deployment requires approval '
+            f"(approval_id={approval.get('id')})"
+        )
+    return result
 
 
 def resolve_project(project_name):
@@ -569,6 +617,11 @@ def run_transaction():
     parser.add_argument('--task-id', type=int, default=None)
     parser.add_argument('--operation', default='python_test',
                         choices=['python_test', 'python_compile'])
+    parser.add_argument(
+        '--production',
+        action='store_true',
+        help='V0.7.0: treat as production deployment (approval gate)',
+    )
     args = parser.parse_args()
 
     ensure_state()
@@ -576,6 +629,13 @@ def run_transaction():
     changes_path = resolve_changes_file(project, args.changes_file)
     changes = load_changes(changes_path)
     transaction_id = f'mut-{utc_stamp()}-{uuid.uuid4().hex[:8]}'
+
+    # V0.7.0: production gate before any write-ahead / file touch.
+    if args.production:
+        _gate_production_deployment(
+            task_id=args.task_id,
+            proposed_change=str(changes_path),
+        )
 
     tx = {
         'transaction_id': transaction_id,

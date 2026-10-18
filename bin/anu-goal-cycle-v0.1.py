@@ -56,6 +56,13 @@ def _load_aggregator():
     )
 
 
+def _load_memory():
+    return _load(
+        "anu_observation_memory_v070",
+        _HERE / "anu-observation-memory-v0.1.py",
+    )
+
+
 def _require_db(db):
     if not isinstance(db, sqlite3.Connection):
         raise TypeError("db must be a sqlite3.Connection")
@@ -202,15 +209,87 @@ def expand_pending_goals(
     }
 
 
+def remember_completed_goals(db, sync_results):
+    """Write observation + memory for goals that just became completed."""
+    db = _require_db(db)
+    if not sync_results:
+        return []
+
+    try:
+        memory = _load_memory()
+    except Exception:
+        return []
+
+    if hasattr(memory, "migrate"):
+        try:
+            memory.migrate(db)
+        except Exception:
+            pass
+
+    remembered = []
+    for summary in sync_results:
+        if not summary.get("changed"):
+            continue
+        after = summary.get("after") or (summary.get("goal") or {}).get("status")
+        derived = summary.get("derived")
+        if after != "completed" and derived != "completed":
+            continue
+        goal_id = summary.get("goal_id")
+        if not isinstance(goal_id, int):
+            continue
+
+        goal = summary.get("goal") or {}
+        project_key = resolve_project_key(db, goal) if goal else None
+        if project_key is None and goal.get("project_id") is not None:
+            project_key = resolve_project_key(
+                db,
+                {
+                    "project_id": goal.get("project_id"),
+                },
+            )
+
+        content = (
+            f"goal {goal_id} completed "
+            f"({summary.get('task_count', 0)} tasks)"
+        )
+        try:
+            obs_id = memory.record_observation(
+                db,
+                content=content,
+                observation_type="goal_completed",
+            )
+            mem = memory.create_memory(
+                db,
+                observation_id=obs_id,
+                summary=content,
+                goal_id=goal_id,
+                project_key=project_key,
+                tags=["goal_completed", "v0.7.0"],
+                confidence=0.9,
+            )
+            remembered.append({
+                "goal_id": goal_id,
+                "memory_id": mem.get("id") if isinstance(mem, dict) else mem,
+                "project_key": project_key,
+            })
+        except Exception:
+            continue
+
+    return remembered
+
+
 def sync_goal_statuses(db, limit=100):
     """Run goal aggregator sync for pending/active/blocked goals."""
     db = _require_db(db)
     agg = _load_aggregator()
     results = agg.sync_active_goals(db, limit=limit)
     changed = [r for r in results if r.get("changed")]
+    remembered = remember_completed_goals(db, results)
     return {
         "synced": len(results),
         "changed": len(changed),
+        "remembered": len(remembered),
+        "memories": remembered,
         "results": results,
     }
 

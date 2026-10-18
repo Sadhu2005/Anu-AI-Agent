@@ -7,9 +7,10 @@ Short summary per version. Full detail, design, tests, and evidence are in
 
 Real ANU agent runtime (integration of V0.6.x).
 
-- Goal cycle glue: `anu-goal-cycle-v0.1.py` (expand pending + sync statuses)
+- Goal cycle glue: expand pending + sync statuses + remember on complete
 - Runtime: wake re-eval → expand → schedule → goal sync each tick
-- Portable regression + full chain V0.6.1→V0.7.0
+- Production deploy gate: `safe-mutation --production`
+- Portable regression (8) + failure injection (6); full chain V0.6.1→V0.7.0
 - Pi live E2E evidence pending
 
 ## [V0.6.9] — 2026-10-18 · tag `v0.6.9`

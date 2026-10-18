@@ -71,6 +71,13 @@ jobs:
           else
             echo "skip: no V0.7.0 pack on this branch"
           fi
+      - name: V0.7.0 failure injection
+        run: |
+          if [ -f tests/run_v0_7_0_failure_injection.py ]; then
+            python tests/run_v0_7_0_failure_injection.py
+          else
+            echo "skip: no V0.7.0 failure pack on this branch"
+          fi
 
   config-yaml:
     runs-on: ubuntu-latest

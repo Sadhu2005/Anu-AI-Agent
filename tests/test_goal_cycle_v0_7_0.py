@@ -88,6 +88,13 @@ def make_db():
             run_id TEXT,
             attempt INTEGER
         );
+        CREATE TABLE observations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            observation_type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         """
     )
     db.execute(
@@ -152,6 +159,15 @@ def test_expand_then_sync_completes():
         assert sync["changed"] >= 1, sync
         goal = db.execute("SELECT status FROM goals WHERE id = 1").fetchone()
         assert goal["status"] == "completed", dict(goal)
+        assert sync.get("remembered", 0) >= 1, sync
+        mem = db.execute(
+            """SELECT id, goal_id, project_key, summary, tags_json
+               FROM agent_memories WHERE goal_id = 1
+               ORDER BY id DESC LIMIT 1"""
+        ).fetchone()
+        assert mem is not None, "goal completion must write agent_memories"
+        assert mem["project_key"] == "sandbox-test-project"
+        assert "goal_completed" in (mem["tags_json"] or "")
     finally:
         if old is None:
             os.environ.pop("ANU_BASE", None)
@@ -159,7 +175,7 @@ def test_expand_then_sync_completes():
             os.environ["ANU_BASE"] = old
         db.close()
         path.unlink(missing_ok=True)
-    print("PASS expand -> complete tasks -> sync completed")
+    print("PASS expand -> complete tasks -> sync completed + remembered")
 
 
 def test_skips_goal_without_project():

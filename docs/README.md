@@ -68,7 +68,7 @@ the next version.
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Step 1 (goal spine) |
+| [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Step 2 (exit-criteria glue) |
 
 ## Working Rules
 

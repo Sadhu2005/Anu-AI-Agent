@@ -13,6 +13,9 @@ TESTS = [
     TESTS_DIR / "test_goal_cycle_v0_7_0.py",
     TESTS_DIR / "test_runtime_goal_spine_v0_7_0.py",
     TESTS_DIR / "test_goal_approval_resume_v0_7_0.py",
+    TESTS_DIR / "test_goal_reboot_resume_v0_7_0.py",
+    TESTS_DIR / "test_goal_resource_defer_resume_v0_7_0.py",
+    TESTS_DIR / "test_production_deployment_gate_v0_7_0.py",
     TESTS_DIR / "test_hot_pi_waits_and_rewakes_v0_6_6.py",
     TESTS_DIR / "test_startup_recovery_sequence_v0_6_8.py",
 ]

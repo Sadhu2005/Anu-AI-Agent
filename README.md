@@ -28,11 +28,11 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.6.6 in progress; branch **`v0.6.6-integration`** (V0.6.5 frozen) |
-| **Proven** | V0.5.9–V0.6.5 as before; V0.6.6 portable resource policy |
-| **Maturity** | V0.6.5 **100%** · V0.6.6 **~40%** (Pi evidence pending) |
-| **Next** | Pi consistency + Guardian evidence, then freeze V0.6.6 |
-| **Then** | V0.6.7 approval → V0.7.0 agent runtime |
+| **Version** | V0.6.6 frozen (tag `v0.6.6`); branch **`v0.6.6-integration`** |
+| **Proven** | V0.5.9–V0.6.5 as before; V0.6.6 consistency + Guardian NORMAL on Pi |
+| **Maturity** | V0.6.5 **100%** · V0.6.6 **100%** |
+| **Next** | Human approval boundary (V0.6.7) |
+| **Then** | V0.6.8–.9 → V0.7.0 agent runtime |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
 

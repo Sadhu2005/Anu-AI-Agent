@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.6.6] — in progress · branch `v0.6.6-integration`
+## [V0.6.6] — 2026-10-18 · tag `v0.6.6`
 
 Resource-aware intelligence: work selection from machine conditions.
 
@@ -11,7 +11,7 @@ Resource-aware intelligence: work selection from machine conditions.
 - Temperature hysteresis (`resume_celsius`); Guardian state file
 - Scheduler RUN/WAIT/DENY (heavy low RAM, hot host, disk DENY)
 - Task Engine `MAX_ATTEMPTS` from policy; consistency gate (G5)
-- Portable regression pending Pi evidence
+- Pi: regression 4/4; consistency ok; Guardian NORMAL @ 47.95 °C
 
 ## [V0.6.5] — 2026-10-18 · tag `v0.6.5`
 

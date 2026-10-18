@@ -62,12 +62,7 @@ the next version.
 | [V0.6.6](versions/v0.6.6.md) | Resource-aware intelligence | Frozen | tag `v0.6.6` |
 | [V0.6.7](versions/v0.6.7.md) | Human approval boundary | Frozen | tag `v0.6.7` |
 | [V0.6.8](versions/v0.6.8.md) | Long-running agent | Frozen | tag `v0.6.8` |
-
-### In progress
-
-| Version | Title | Status |
-|---|---|---|
-| [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening | Step 1 (in-repo) |
+| [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening | Frozen | tag `v0.6.9` |
 
 ### Planned
 

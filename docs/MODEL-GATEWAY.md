@@ -60,21 +60,37 @@ budget:
   max_usd_per_day: 1.0
 ```
 
+### Common mistake (401 malformed token)
+
+| Knob | What goes here | Example |
+|---|---|---|
+| YAML `base_url` | Server address | `http://192.168.1.13:1234/v1` or `http://127.0.0.1:1234/v1` |
+| `ANU_MODEL_API_KEY` | Bearer token only | LM Studio **Manage Tokens** value, or OpenAI `sk-...` |
+
+**Never** put `http://…` in `ANU_MODEL_API_KEY`. The gateway rejects URL-shaped
+keys. PowerShell keeps env vars for the session — after a bad value run
+`Remove-Item Env:ANU_MODEL_API_KEY` before trying again.
+
 ### Switch examples
 
 **A. LM Studio on your PC (recommended for home lab)**
 
 1. In LM Studio: load a model (e.g. `meta-llama-3.1-8b-instruct`).
 2. Start the local server; enable **Serve on Network** / bind `0.0.0.0`.
-3. On the Pi, set:
+3. On the PC (smoke test), keep YAML `base_url: "http://127.0.0.1:1234/v1"`.
+   On the Pi, set:
 
 ```yaml
-base_url: "http://192.168.x.x:1234/v1"   # your PC's LAN IP
+base_url: "http://192.168.1.13:1234/v1"   # your PC's LAN IP
 model: "meta-llama-3.1-8b-instruct"
 ```
 
-4. API key: LM Studio usually accepts any value or empty — set
-   `ANU_MODEL_API_KEY=lm-studio` for a stable non-empty header.
+4. API key:
+   - If **Require Authentication** is ON: Developer → Server Settings →
+     **Manage Tokens** → Create Token → copy once into `ANU_MODEL_API_KEY`.
+   - If auth is OFF: leave the env unset (no Authorization header).
+   - Placeholder strings like `lm-studio` only work when the server does not
+     enforce real tokens.
 
 **B. OpenAI (or any cloud OpenAI-compatible API)**
 
@@ -98,22 +114,23 @@ Same as B: point `base_url` at their `/v1` root, set `model` and key.
 |---|---|
 | Key in git / `config/*.yaml` | Env `ANU_MODEL_API_KEY` or systemd `LoadCredential=` |
 | Key under `/srv/anu/secrets` writable by agent | Root-owned file only the gateway user can read |
+| Pasting a live token into chat / public issues | Rotate (delete + create) in Manage Tokens |
 
 Pi (later, with systemd):
 
 ```ini
 # in anu-model-gateway.service
-Environment=ANU_MODEL_API_KEY=lm-studio
-# or:
 # LoadCredential=model_api_key:/etc/anu/model-api-key
 # Environment=ANU_MODEL_API_KEY_FILE=%d/model_api_key
 ```
 
-Dev / smoke test on PC or Pi:
+Dev / smoke test on PC (PowerShell):
 
-```bash
-export ANU_MODEL_API_KEY=lm-studio
-python3 -B bin/anu-model-gateway-v0.1.py chat --prompt "ping"
+```powershell
+$env:ANU_BASE="d:\Anu-AI-Agent"
+$env:ANU_MODEL_API_KEY="paste-lm-studio-token-here"
+python -B bin/anu-model-gateway-v0.1.py health
+python -B bin/anu-model-gateway-v0.1.py chat --prompt "Reply with OK only."
 ```
 
 ---

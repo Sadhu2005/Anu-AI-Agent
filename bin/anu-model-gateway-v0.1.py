@@ -98,6 +98,26 @@ def load_config(path: Path | None = None) -> dict:
     return cfg
 
 
+def _looks_like_url(value: str) -> bool:
+    text = (value or "").strip().lower()
+    return text.startswith("http://") or text.startswith("https://")
+
+
+def validate_api_key(key: str) -> str:
+    """Reject URL-shaped keys (common mix-up with base_url). Empty is allowed."""
+    key = (key or "").strip()
+    if not key:
+        return ""
+    if _looks_like_url(key):
+        raise ValueError(
+            "ANU_MODEL_API_KEY looks like a URL. Put the server address in "
+            "config base_url (e.g. http://192.168.1.13:1234/v1), and put the "
+            "LM Studio Manage Tokens value (or cloud API key) in "
+            "ANU_MODEL_API_KEY — not the URL."
+        )
+    return key
+
+
 def resolve_api_key(cfg: dict) -> str:
     """Read API key from file env, then string env. Empty allowed for some local servers."""
     file_env = str(cfg.get("api_key_file_env") or "ANU_MODEL_API_KEY_FILE")
@@ -105,10 +125,10 @@ def resolve_api_key(cfg: dict) -> str:
     if key_file:
         path = Path(key_file)
         if path.is_file():
-            return path.read_text(encoding="utf-8").strip()
+            return validate_api_key(path.read_text(encoding="utf-8"))
 
     env_name = str(cfg.get("api_key_env") or "ANU_MODEL_API_KEY")
-    return (os.environ.get(env_name) or "").strip()
+    return validate_api_key(os.environ.get(env_name) or "")
 
 
 def _normalize_base_url(base_url: str) -> str:
@@ -325,6 +345,14 @@ def request_reasoning(
     )
 
 
+def _cli_fail(message: str, *, extra=None) -> int:
+    payload = {"ok": False, "error": str(message)}
+    if isinstance(extra, dict):
+        payload.update(extra)
+    print(json.dumps(payload, indent=2))
+    return 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="ANU Model Gateway v0.1")
     parser.add_argument(
@@ -349,59 +377,62 @@ def main(argv=None):
     reason_p.add_argument("--privacy-class", default=None)
 
     args = parser.parse_args(argv)
-    cfg_path = Path(args.config) if args.config else None
-    cfg = load_config(cfg_path)
+    try:
+        cfg_path = Path(args.config) if args.config else None
+        cfg = load_config(cfg_path)
 
-    if args.cmd == "show-config":
-        public = {
-            k: v
-            for k, v in cfg.items()
-            if k not in ("api_key",)
-        }
-        public["api_key_present"] = bool(resolve_api_key(cfg))
-        print(json.dumps(public, indent=2))
-        return 0
+        if args.cmd == "show-config":
+            public = {
+                k: v
+                for k, v in cfg.items()
+                if k not in ("api_key",)
+            }
+            public["api_key_present"] = bool(resolve_api_key(cfg))
+            print(json.dumps(public, indent=2))
+            return 0
 
-    if args.cmd == "health":
-        result = health_check(cfg)
-        print(json.dumps(result, indent=2))
-        return 0 if result.get("ok") else 1
+        if args.cmd == "health":
+            result = health_check(cfg)
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("ok") else 1
 
-    if args.cmd == "chat":
-        messages = []
-        if args.system:
-            messages.append({"role": "system", "content": args.system})
-        messages.append({"role": "user", "content": args.prompt})
-        result = request_chat(
-            cfg,
-            messages=messages,
-            model=args.model,
-            privacy_class=args.privacy_class,
-        )
-        print(json.dumps({
-            "ok": result["ok"],
-            "model": result["model"],
-            "text": result["text"],
-            "zero_cost": result["zero_cost"],
-        }, indent=2))
-        return 0
+        if args.cmd == "chat":
+            messages = []
+            if args.system:
+                messages.append({"role": "system", "content": args.system})
+            messages.append({"role": "user", "content": args.prompt})
+            result = request_chat(
+                cfg,
+                messages=messages,
+                model=args.model,
+                privacy_class=args.privacy_class,
+            )
+            print(json.dumps({
+                "ok": result["ok"],
+                "model": result["model"],
+                "text": result["text"],
+                "zero_cost": result["zero_cost"],
+            }, indent=2))
+            return 0
 
-    if args.cmd == "reason":
-        result = request_reasoning(
-            args.prompt,
-            cfg=cfg,
-            system=args.system,
-            privacy_class=args.privacy_class,
-        )
-        print(json.dumps({
-            "ok": result["ok"],
-            "model": result["model"],
-            "text": result["text"],
-        }, indent=2))
-        return 0
+        if args.cmd == "reason":
+            result = request_reasoning(
+                args.prompt,
+                cfg=cfg,
+                system=args.system,
+                privacy_class=args.privacy_class,
+            )
+            print(json.dumps({
+                "ok": result["ok"],
+                "model": result["model"],
+                "text": result["text"],
+            }, indent=2))
+            return 0
 
-    parser.error(f"unknown command: {args.cmd}")
-    return 2
+        parser.error(f"unknown command: {args.cmd}")
+        return 2
+    except (ValueError, PermissionError, RuntimeError, FileNotFoundError) as exc:
+        return _cli_fail(exc)
 
 
 if __name__ == "__main__":

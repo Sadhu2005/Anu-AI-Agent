@@ -63,7 +63,9 @@ def test_api_key_from_env_and_file():
     cfg = m.load_config(CONFIG)
     old_key = os.environ.get("ANU_MODEL_API_KEY")
     old_file = os.environ.get("ANU_MODEL_API_KEY_FILE")
+    tmp = None
     try:
+        os.environ.pop("ANU_MODEL_API_KEY_FILE", None)
         os.environ["ANU_MODEL_API_KEY"] = "from-env"
         assert m.resolve_api_key(cfg) == "from-env"
 
@@ -81,11 +83,36 @@ def test_api_key_from_env_and_file():
             os.environ.pop("ANU_MODEL_API_KEY_FILE", None)
         else:
             os.environ["ANU_MODEL_API_KEY_FILE"] = old_file
-        try:
+        if tmp is not None:
             Path(tmp.name).unlink(missing_ok=True)
-        except Exception:
-            pass
     print("PASS api key env + file resolution")
+
+
+def test_reject_url_shaped_api_key():
+    m = load()
+    cfg = m.load_config(CONFIG)
+    old_key = os.environ.get("ANU_MODEL_API_KEY")
+    old_file = os.environ.get("ANU_MODEL_API_KEY_FILE")
+    try:
+        os.environ.pop("ANU_MODEL_API_KEY_FILE", None)
+        os.environ["ANU_MODEL_API_KEY"] = "http://192.168.1.13:1234/v1"
+        try:
+            m.resolve_api_key(cfg)
+            raise AssertionError("URL-shaped key should raise")
+        except ValueError as exc:
+            msg = str(exc)
+            assert "base_url" in msg
+            assert "ANU_MODEL_API_KEY" in msg
+    finally:
+        if old_key is None:
+            os.environ.pop("ANU_MODEL_API_KEY", None)
+        else:
+            os.environ["ANU_MODEL_API_KEY"] = old_key
+        if old_file is None:
+            os.environ.pop("ANU_MODEL_API_KEY_FILE", None)
+        else:
+            os.environ["ANU_MODEL_API_KEY_FILE"] = old_file
+    print("PASS reject URL-shaped API key")
 
 
 def test_zero_cost_lan_hosts():
@@ -146,6 +173,7 @@ if __name__ == "__main__":
     test_switch_provider_is_config_only()
     test_privacy_blocks_secret()
     test_api_key_from_env_and_file()
+    test_reject_url_shaped_api_key()
     test_zero_cost_lan_hosts()
     test_extract_assistant_text()
     test_request_chat_mock_provider()

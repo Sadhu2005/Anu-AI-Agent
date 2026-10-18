@@ -3,14 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.8.2] — 2026-10-18 · branch `v0.8.2-integration`
+## [V0.8.2] — 2026-10-18 · tag `v0.8.2`
 
 Richer multi-step planning graphs (research → design → implement → test → verify).
 
 - Template `multi_stage_goal` (default expand / LLM fallback)
 - LLM prompt prefers stage roles; `improve_sandbox` kept
 - Pack: `run_v0_8_2_regression.py`
-- Pi smoke pending before freeze tag `v0.8.2`
+- Pi: regression **2/2**; goal 13 tasks 293–297 (5-stage)
 
 ## [V0.8.1] — 2026-10-18 · tag `v0.8.1`
 

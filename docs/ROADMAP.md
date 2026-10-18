@@ -103,8 +103,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.2 (richer multi-step planning) is in progress on
-`v0.8.2-integration`. V0.8.1 remains frozen (tag `v0.8.1`).
+V0.8.2 is frozen (tag `v0.8.2`): default `multi_stage_goal` expand graph.
+Next: further V0.8 capability slices (VISION).
 
 ## Model gateway (V0.7.1 frozen)
 

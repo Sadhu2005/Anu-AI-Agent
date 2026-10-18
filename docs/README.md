@@ -78,7 +78,7 @@ the next version.
 | [V0.7.6](versions/v0.7.6.md) | LLM-aware replan | Frozen · tag `v0.7.6` |
 | [V0.8.0](versions/v0.8.0.md) | Self-observation | Frozen · tag `v0.8.0` |
 | [V0.8.1](versions/v0.8.1.md) | Verification recovery | Frozen · tag `v0.8.1` |
-| [V0.8.2](versions/v0.8.2.md) | Richer planning | In progress · `v0.8.2-integration` |
+| [V0.8.2](versions/v0.8.2.md) | Richer planning | Frozen · tag `v0.8.2` |
 
 ## Working Rules
 

@@ -3,6 +3,16 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.7.2] — in progress · branch `v0.7.2-integration`
+
+Optional LLM planner via model gateway; template fallback.
+
+- `anu-llm-planner-v0.1.py`: propose/validate steps; only `python_test` /
+  `python_compile`; gateway down or bad JSON → `improve_sandbox`
+- Config `planner:` block (`mode: llm_optional | template_only`)
+- Goal-cycle loads LLM planner when `llm_optional`
+- Pack: `run_v0_7_2_regression.py` (LLM + gateway tests)
+
 ## [V0.7.1] — 2026-10-18 · tag `v0.7.1`
 
 Model gateway (OpenAI-compatible): LM Studio / cloud by config + API key.

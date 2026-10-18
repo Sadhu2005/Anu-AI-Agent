@@ -209,7 +209,23 @@ sudo -u anu-agent python3 -B /srv/anu/bin/anu-model-client-v0.1.py chat \
 
 ---
 
-## 6. Safety rules (unchanged)
+## 6. Planner mode (V0.7.2)
+
+In `anu-model-gateway.yaml`:
+
+```yaml
+planner:
+  mode: llm_optional   # or template_only
+  fallback_template: improve_sandbox
+  max_steps: 8
+  timeout_seconds: 60
+```
+
+`llm_optional` (default): goal-cycle uses `anu-llm-planner-v0.1.py`. If the
+gateway is down or the model returns invalid / disallowed ops, expand falls
+back to `improve_sandbox`. `template_only` never calls the gateway.
+
+## 7. Safety rules (unchanged)
 
 - Model output is **data**, not authority. Plans still go through policy,
   Safe Mutation, sandbox, verification.
@@ -219,7 +235,7 @@ sudo -u anu-agent python3 -B /srv/anu/bin/anu-model-client-v0.1.py chat \
 
 ---
 
-## 7. Implementation status
+## 8. Implementation status
 
 | Piece | Status |
 |---|---|
@@ -227,4 +243,4 @@ sudo -u anu-agent python3 -B /srv/anu/bin/anu-model-client-v0.1.py chat \
 | `anu-model-gateway-v0.1.py` (OpenAI-compatible + `serve`) | V0.7.1 step 1–2 |
 | `anu-model-client-v0.1.py` (AF_UNIX client) | V0.7.1 step 2 |
 | systemd + LoadCredential + SO_PEERCRED | V0.7.1 step 2 |
-| Planner optional LLM path | Deferred (post–V0.7.1 freeze) |
+| Planner optional LLM path | V0.7.2 (`anu-llm-planner-v0.1.py`, template fallback) |

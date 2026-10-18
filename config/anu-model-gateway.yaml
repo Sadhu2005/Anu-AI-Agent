@@ -45,3 +45,10 @@ socket:
   allow_user: "anu-agent"
   allow_group: "anu-agent"
   max_request_bytes: 65536
+
+# V0.7.2: optional LLM planning via gateway; template fallback on failure.
+planner:
+  mode: llm_optional   # llm_optional | template_only
+  fallback_template: improve_sandbox
+  max_steps: 8
+  timeout_seconds: 60

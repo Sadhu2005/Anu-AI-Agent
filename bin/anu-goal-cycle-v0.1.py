@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""ANU Goal Cycle v0.1 (V0.7.0) — glue Goal → Plan → Sync into the runtime.
+"""ANU Goal Cycle v0.1 (V0.7.0+) — glue Goal → Plan → Sync into the runtime.
 
-Integration only: calls existing template planner + goal aggregator.
-Does not invent a new planner or scheduler.
+Integration only: calls planner (LLM optional from V0.7.2, else template)
++ goal aggregator. Does not invent a new scheduler.
 """
 
 from __future__ import annotations
@@ -10,12 +10,13 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
 _HERE = Path(__file__).resolve().parent
 
@@ -42,7 +43,32 @@ def _load_plans():
     )
 
 
+def _planner_mode() -> str:
+    """Read planner.mode from model-gateway config (default llm_optional)."""
+    for candidate in (
+        BASE / "config" / "anu-model-gateway.yaml",
+        _HERE.parent / "config" / "anu-model-gateway.yaml",
+    ):
+        if not candidate.is_file():
+            continue
+        try:
+            import yaml  # type: ignore
+
+            data = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
+            mode = ((data.get("planner") or {}).get("mode"))
+            if mode in ("llm_optional", "template_only"):
+                return mode
+        except Exception:
+            pass
+    return "llm_optional"
+
+
 def _load_planner():
+    """V0.7.2: LLM planner when mode=llm_optional; else template."""
+    if _planner_mode() == "llm_optional":
+        path = _HERE / "anu-llm-planner-v0.1.py"
+        if path.is_file():
+            return _load("anu_llm_planner_v072", path)
     return _load(
         "anu_template_planner_v070",
         _HERE / "anu-template-planner-v0.1.py",
@@ -193,7 +219,8 @@ def expand_pending_goals(
                 "goal_id": goal_id,
                 "project": project_key,
                 "task_count": len(result.get("tasks") or []),
-                "template": template_name,
+                "template": result.get("template") or template_name,
+                "source": result.get("source") or "template",
             })
         except Exception as exc:
             skipped.append({

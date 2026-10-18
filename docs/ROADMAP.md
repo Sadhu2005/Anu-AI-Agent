@@ -66,6 +66,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening (security release) | Security gaps G1–G3 closed with evidence, consistency, failure injection; feature freeze | all V0.6.x |
 | [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Goal → plan → execute → verify → remember, as one system | V0.6.9 |
 | [V0.7.1](versions/v0.7.1.md) | Model gateway | OpenAI-compatible LLM via gateway; LM Studio / cloud by config | V0.7.0 |
+| [V0.7.2](versions/v0.7.2.md) | Optional LLM planner | Gateway plan proposal + template fallback | V0.7.1 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -95,8 +96,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.7.1 is frozen (tag `v0.7.1`): model gateway live on Pi → LM Studio.
-Next slice: optional LLM planner via gateway with template fallback.
+[V0.7.2](versions/v0.7.2.md) optional LLM planner on `v0.7.2-integration`
+(gateway propose + template fallback). V0.7.1 is frozen (tag `v0.7.1`).
 
 ## Model gateway (V0.7.1 frozen)
 

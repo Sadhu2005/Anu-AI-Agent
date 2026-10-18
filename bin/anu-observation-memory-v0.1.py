@@ -29,6 +29,9 @@ DB_FILE = BASE / "brain" / "anu-brain.db"
 DEFAULT_TTL_HOURS = 72
 DEFAULT_MAX_MEMORIES_PER_PROJECT = 50
 OBS_TYPE_CAPABILITY = "capability_result"
+OBS_TYPE_VERIFICATION = "verification_outcome"
+
+VERIFICATION_DECISIONS = frozenset({"ACCEPT", "RETRY", "ROLLBACK"})
 
 # Map coarse outcome → failure_class tags (V0.6.0 vocabulary where useful).
 FAILURE_CLASS_BY_SIGNAL = {
@@ -360,6 +363,128 @@ def record_capability_result(
         goal_id=goal_id,
         project_key=project_key,
         capability=capability,
+        failure_class=failure_class,
+        tags=tags,
+        confidence=confidence,
+        ttl_hours=ttl_hours,
+    )
+    return {"observation_id": obs_id, "memory": memory}
+
+
+def _verification_failure_class(decision, *, evidence=None):
+    """Map verification decision + evidence to a coarse failure_class."""
+    if decision == "ACCEPT":
+        return None
+    evidence = evidence or {}
+    questions = evidence.get("questions") or {}
+    if questions.get("no_unintended") is False:
+        return "contract"
+    if questions.get("checkpoint") is False or questions.get("rollback") is False:
+        return "integrity"
+    if questions.get("tests") is False or questions.get("intended_change") is False:
+        return "code_defect"
+    if questions.get("compile") is False:
+        return "code_defect"
+    if decision == "RETRY":
+        return "environment"
+    return "integrity"
+
+
+def classify_verification_outcome(
+    *,
+    decision,
+    operation=None,
+    evidence=None,
+    reason=None,
+):
+    """Build summary, failure_class, and tags for a verification decision."""
+    if decision not in VERIFICATION_DECISIONS:
+        raise ValueError(
+            f"invalid verification decision: {decision!r}; "
+            f"allowed={sorted(VERIFICATION_DECISIONS)}"
+        )
+    op = operation or (evidence or {}).get("operation") or "unknown"
+    if not isinstance(op, str) or not op.strip():
+        op = "unknown"
+    op = op.strip()
+    detail = reason
+    if not detail and evidence:
+        extras = evidence.get("unintended_extras") or []
+        unchanged = evidence.get("unchanged_intended") or []
+        if extras:
+            detail = "scope mismatch"
+        elif unchanged:
+            detail = "intended unchanged"
+        elif (evidence.get("questions") or {}).get("tests") is False:
+            detail = "test failed"
+        elif (evidence.get("questions") or {}).get("compile") is False:
+            detail = "compile failed"
+    if detail:
+        summary = f"verification {decision}: {op} ({detail})"
+    else:
+        summary = f"verification {decision}: {op}"
+    failure_class = _verification_failure_class(decision, evidence=evidence)
+    tags = ["verification", f"decision:{decision}"]
+    if op != "unknown":
+        tags.append(f"operation:{op}")
+    if failure_class:
+        tags.append(f"failure:{failure_class}")
+    else:
+        tags.append("success")
+    return summary, failure_class, tags
+
+
+def record_verification_outcome(
+    db,
+    *,
+    project_key,
+    decision,
+    operation=None,
+    task_id=None,
+    goal_id=None,
+    evidence=None,
+    reason=None,
+    confidence=None,
+    ttl_hours=DEFAULT_TTL_HOURS,
+):
+    """V0.8.0: capture observation + memory for one verification decision."""
+    db = _require_db(db)
+    if not isinstance(project_key, str) or not project_key.strip():
+        raise ValueError("project_key must be a non-empty string")
+    project_key = project_key.strip()
+
+    summary, failure_class, tags = classify_verification_outcome(
+        decision=decision,
+        operation=operation,
+        evidence=evidence,
+        reason=reason,
+    )
+    payload = {
+        "project_key": project_key,
+        "task_id": task_id,
+        "goal_id": goal_id,
+        "decision": decision,
+        "operation": operation or (evidence or {}).get("operation"),
+        "failure_class": failure_class,
+        "summary": summary,
+        "evidence": evidence,
+    }
+    obs_id = record_observation(
+        db,
+        content=json.dumps(payload, sort_keys=True, default=str),
+        observation_type=OBS_TYPE_VERIFICATION,
+        task_id=task_id,
+    )
+    if confidence is None:
+        confidence = 0.85 if decision == "ACCEPT" else 0.9
+    memory = create_memory(
+        db,
+        observation_id=obs_id,
+        summary=summary,
+        task_id=task_id,
+        goal_id=goal_id,
+        project_key=project_key,
+        capability=f"verification.{decision}",
         failure_class=failure_class,
         tags=tags,
         confidence=confidence,

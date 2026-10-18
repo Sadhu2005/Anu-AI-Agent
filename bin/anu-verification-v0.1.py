@@ -66,6 +66,111 @@ def _anu_db():
     return mod
 
 
+def _load_observation_memory():
+    """Best-effort load of observation/memory (V0.8.0)."""
+    try:
+        path = _module_path("anu-observation-memory-v0.1.py")
+    except FileNotFoundError:
+        return None
+    spec = importlib.util.spec_from_file_location(
+        "anu_observation_memory_v0_1_verification",
+        path,
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _resolve_project_key(
+    db,
+    *,
+    project_key=None,
+    mutation_result=None,
+    goal_id=None,
+    task_id=None,
+):
+    """Resolve project_key from arg, mutation result, or goal/task join."""
+    if isinstance(project_key, str) and project_key.strip():
+        return project_key.strip()
+    result = mutation_result or {}
+    for key in ("project_key", "project"):
+        val = result.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    try:
+        if goal_id is not None:
+            row = db.execute(
+                """
+                SELECT p.project_key
+                FROM goals g
+                JOIN projects p ON p.id = g.project_id
+                WHERE g.id = ?
+                """,
+                (goal_id,),
+            ).fetchone()
+            if row is not None:
+                key = row[0] if not isinstance(row, sqlite3.Row) else row["project_key"]
+                if isinstance(key, str) and key.strip():
+                    return key.strip()
+        if task_id is not None:
+            row = db.execute(
+                """
+                SELECT p.project_key
+                FROM tasks t
+                JOIN goals g ON g.id = t.goal_id
+                JOIN projects p ON p.id = g.project_id
+                WHERE t.id = ?
+                """,
+                (task_id,),
+            ).fetchone()
+            if row is not None:
+                key = row[0] if not isinstance(row, sqlite3.Row) else row["project_key"]
+                if isinstance(key, str) and key.strip():
+                    return key.strip()
+    except sqlite3.Error:
+        return None
+    return None
+
+
+def _record_verification_memory_best_effort(
+    db,
+    *,
+    decision,
+    evidence,
+    operation=None,
+    project_key=None,
+    mutation_result=None,
+    task_id=None,
+    goal_id=None,
+):
+    """V0.8.0: persist verification decision as observation + memory."""
+    mem = _load_observation_memory()
+    if mem is None or db is None:
+        return None
+    resolved = _resolve_project_key(
+        db,
+        project_key=project_key,
+        mutation_result=mutation_result,
+        goal_id=goal_id,
+        task_id=task_id,
+    )
+    if not resolved:
+        return None
+    try:
+        mem.migrate(db)
+        return mem.record_verification_outcome(
+            db,
+            project_key=resolved,
+            decision=decision,
+            operation=operation,
+            task_id=task_id,
+            goal_id=goal_id,
+            evidence=evidence,
+        )
+    except Exception:
+        return None
+
+
 def db_connect(db_path=None):
     return _anu_db().db_connect(db_path if db_path is not None else DB_FILE)
 
@@ -418,6 +523,7 @@ def evaluate_mutation_attempt(
     actual_changed_files=None,
     operation=None,
     persist=True,
+    project_key=None,
 ):
     """Build evidence, decide ACCEPT|RETRY|ROLLBACK, optionally persist."""
     db = _require_db(db)
@@ -560,6 +666,20 @@ def evaluate_mutation_attempt(
             goal_ok=None,
             evidence=evidence,
         )
+        # V0.8.0: best-effort self-observation; never fail verification.
+        mem_result = _record_verification_memory_best_effort(
+            db,
+            decision=decision,
+            evidence=evidence,
+            operation=op,
+            project_key=project_key,
+            mutation_result=result,
+            task_id=task_id,
+            goal_id=goal_id,
+        )
+        if mem_result and isinstance(record, dict):
+            record["memory_id"] = (mem_result.get("memory") or {}).get("id")
+            record["observation_id"] = mem_result.get("observation_id")
     return record
 
 

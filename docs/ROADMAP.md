@@ -71,6 +71,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.7.4](versions/v0.7.4.md) | Planner prompt + retry | `tool_choice=none` + one retry for live `source=llm` | V0.7.3 |
 | [V0.7.5](versions/v0.7.5.md) | Activity reports | “What did you do?” goal/recent JSON from brain | V0.7.4 |
 | [V0.7.6](versions/v0.7.6.md) | LLM-aware replan | Recovery replan uses optional LLM planner | V0.7.5 |
+| [V0.8.0](versions/v0.8.0.md) | Self-observation | Verification → memory → planning hints | V0.7.6 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -100,8 +101,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.7.6 is frozen (tag `v0.7.6`): recovery replan via optional LLM planner.
-Next: further 0.7.x glue, or V0.8 capability work (VISION).
+V0.8.0 (self-observation from verification) is in progress on
+`v0.8.0-integration`. V0.7.6 remains frozen (tag `v0.7.6`).
 
 ## Model gateway (V0.7.1 frozen)
 

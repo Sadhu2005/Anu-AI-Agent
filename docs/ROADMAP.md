@@ -42,7 +42,8 @@ V0.6.4       ████████████████████  100%
 V0.6.5       ████████████████████  100%
 V0.6.6       ████████████████████  100%
 V0.6.7       ████████████████████  100%
-V0.6.8–.9    ░░░░░░░░░░░░░░░░░░░░  0%
+V0.6.8       ████████░░░░░░░░░░░░   40%  (startup recovery + portable tests)
+V0.6.9       ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
 
@@ -92,11 +93,11 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.6.8](versions/v0.6.8.md) long-running agent.
+Finish [V0.6.8](versions/v0.6.8.md) on Pi (migrate `0010`, startup
+recovery run), then freeze.
 
-V0.6.7 is frozen (tag `v0.6.7`): approval boundary, CLI channel,
-Pi live approve→rewake
-([versions/v0.6.7.md](versions/v0.6.7.md)).
+V0.6.7 is frozen (tag `v0.6.7`). V0.6.8 step 1 is on
+`v0.6.8-integration`: durable wakes, SIGTERM park, log rotation.
 
 ## Model gateway (separate release)
 

@@ -62,11 +62,16 @@ the next version.
 | [V0.6.6](versions/v0.6.6.md) | Resource-aware intelligence | Frozen | tag `v0.6.6` |
 | [V0.6.7](versions/v0.6.7.md) | Human approval boundary | Frozen | tag `v0.6.7` |
 
+### In progress
+
+| Version | Title | Status |
+|---|---|---|
+| [V0.6.8](versions/v0.6.8.md) | Long-running agent | Step 1 (portable) |
+
 ### Planned
 
 | Version | Title |
 |---|---|
-| [V0.6.8](versions/v0.6.8.md) | Long-running agent |
 | [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening |
 | [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime |
 

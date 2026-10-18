@@ -147,6 +147,33 @@ def _host_snapshot_for_admission(resource_mod):
     }
 
 
+def _register_resource_wake(db, task_id, wake_at):
+    """V0.6.8: durable resource wake for post-restart evaluation."""
+    try:
+        for candidate in (
+            BASE / "bin" / "anu-startup-recovery-v0.1.py",
+            _HERE / "anu-startup-recovery-v0.1.py",
+        ):
+            if not candidate.is_file():
+                continue
+            spec = importlib.util.spec_from_file_location(
+                "anu_startup_recovery_v0_1_sched",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.register_wake(
+                db,
+                wake_kind=mod.WAKE_RESOURCE,
+                task_id=task_id,
+                wake_at=wake_at,
+                payload={"reason": "resource_wait"},
+            )
+            return
+    except Exception:
+        return
+
+
 def filter_candidates_by_resources(db, candidates, resource_snapshot=None):
     """Apply V0.6.6 RUN/WAIT/DENY admission; persist WAIT retry_after.
 
@@ -183,6 +210,7 @@ def filter_candidates_by_resources(db, candidates, resource_snapshot=None):
                     (retry_after, task_id),
                 )
                 db.commit()
+            _register_resource_wake(db, task_id, retry_after)
             deferred.append({
                 "task_id": task_id,
                 "action": "WAIT",

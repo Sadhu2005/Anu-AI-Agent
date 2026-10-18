@@ -28,10 +28,10 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.6.7 frozen (tag `v0.6.7`); branch **`v0.6.7-integration`** |
-| **Proven** | V0.5.9–V0.6.6 as before; V0.6.7 approve id=1 → task 257 pending on Pi |
-| **Maturity** | V0.6.6 **100%** · V0.6.7 **100%** |
-| **Next** | Long-running agent (V0.6.8) |
+| **Version** | V0.6.8 in progress; branch **`v0.6.8-integration`** (V0.6.7 frozen) |
+| **Proven** | V0.5.9–V0.6.7 as before; V0.6.8 portable startup recovery |
+| **Maturity** | V0.6.7 **100%** · V0.6.8 **~40%** (Pi evidence pending) |
+| **Next** | Pi migrate + startup-recovery run, then freeze V0.6.8 |
 | **Then** | V0.6.9 hardening → V0.7.0 agent runtime |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.

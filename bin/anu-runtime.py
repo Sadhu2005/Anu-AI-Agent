@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import signal
 import subprocess
 import time
@@ -9,11 +10,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-BASE = Path("/srv/anu")
+BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
+_HERE = Path(__file__).resolve().parent
 
 GUARDIAN = BASE / "bin" / "anu-resource-guardian.py"
 SCHEDULER = BASE / "bin" / "anu-task-scheduler-v0.1.py"
 RECOVERY = BASE / "bin" / "anu-recovery-v0.1.py"
+STARTUP = BASE / "bin" / "anu-startup-recovery-v0.1.py"
 DB_FILE = BASE / "brain" / "anu-brain.db"
 SCHEDULER_LOCK_FILE = BASE / "runtime" / "anu-scheduler.lock"
 EXECUTION_LOCK_FILE = BASE / "runtime" / "anu-execution.lock"
@@ -87,8 +90,62 @@ def _load_recovery():
     return module
 
 
+def _load_startup():
+    for candidate in (
+        STARTUP,
+        _HERE / "anu-startup-recovery-v0.1.py",
+    ):
+        if not candidate.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location(
+            "anu_startup_recovery_v0_1_runtime",
+            candidate,
+        )
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    return None
+
+
 def run_startup_recovery():
     global recovery_done
+
+    # V0.6.8: prefer full startup sequence (mutation + approvals + wakes).
+    startup = _load_startup()
+    if startup is not None:
+        try:
+            summary = startup.run_startup_sequence(
+                db_path=str(DB_FILE),
+                lock_path=str(EXECUTION_LOCK_FILE),
+                state_path=str(STATE_FILE),
+                log_dir=str(BASE / "logs"),
+            )
+        except Exception as exc:
+            write_log(
+                "Startup recovery failed: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            return None
+
+        mutation = summary.get("mutation_recovery") or {}
+        status = mutation.get("status", "OK")
+        if status == "DEFERRED_ACTIVE_EXECUTION":
+            write_log("Recovery deferred: execution in progress")
+            return summary
+
+        recovery_done = True
+        wakes = summary.get("wakes") or {}
+        inventory = summary.get("inventory") or {}
+        write_log(
+            f"Startup recovery {status}: "
+            f"wakes_satisfied={len(wakes.get('satisfied', []))} "
+            f"waiting={len(inventory.get('waiting_tasks', []))} "
+            f"goals={len(inventory.get('active_goals', []))} "
+            f"logs_rotated={len((summary.get('logs') or {}).get('rotated', []))}"
+        )
+        return summary
 
     try:
         result = _load_recovery().recover(
@@ -265,6 +322,7 @@ def run_runtime_iteration():
         "agent": "ANU",
         "status": status,
         "last_health_check": now(),
+        "heartbeat_at": now(),
         "temperature_c": temperature,
         "memory": memory,
         "cpu_percent": data.get(
@@ -320,10 +378,21 @@ def main():
 
             time.sleep(1)
 
+    # V0.6.8: park durable state on SIGTERM before marking stopped.
+    startup = _load_startup()
+    if startup is not None:
+        try:
+            startup.park_for_shutdown(STATE_FILE, reason="SIGTERM")
+        except Exception as exc:
+            write_log(
+                f"Park on shutdown failed: {type(exc).__name__}: {exc}"
+            )
+
     save_state({
         "agent": "ANU",
         "status": "stopped",
         "stopped_at": now(),
+        "park_reason": "SIGTERM",
     })
 
     write_log("Runtime stopped.")

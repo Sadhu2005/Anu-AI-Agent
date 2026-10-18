@@ -3,6 +3,16 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.6.8] — in progress · branch `v0.6.8-integration`
+
+Long-running agent: durable resume across restart.
+
+- `anu-startup-recovery-v0.1.py` + `wake_conditions` (`0010_v0_6_8.sql`)
+- Startup: mutation recover → expire approvals → evaluate wakes → inventory
+- SIGTERM parks `anu-state.json`; heartbeat fields; log rotation
+- Runtime wired to full startup sequence
+- Portable regression pending Pi evidence
+
 ## [V0.6.7] — 2026-10-18 · tag `v0.6.7`
 
 Human approval boundary: AUTONOMOUS / APPROVAL / DENY.

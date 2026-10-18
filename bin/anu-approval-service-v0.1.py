@@ -329,6 +329,7 @@ def request_approval(
 
     if put_task_waiting and task_id is not None:
         _set_task_waiting(db, task_id)
+        _register_approval_wake(db, task_id=task_id, goal_id=goal_id, expires=expires)
 
     _audit(
         db,
@@ -354,6 +355,37 @@ def _set_task_waiting(db, task_id):
             (task_id,),
         )
     except sqlite3.OperationalError:
+        pass
+
+
+def _register_approval_wake(db, *, task_id, goal_id, expires):
+    """V0.6.8: durable approval wake so restart can re-evaluate."""
+    try:
+        startup = None
+        for candidate in (
+            BASE / "bin" / "anu-startup-recovery-v0.1.py",
+            _HERE / "anu-startup-recovery-v0.1.py",
+            _REPO / "bin" / "anu-startup-recovery-v0.1.py",
+        ):
+            if candidate.is_file():
+                spec = importlib.util.spec_from_file_location(
+                    "anu_startup_recovery_v0_1_approval",
+                    candidate,
+                )
+                startup = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(startup)
+                break
+        if startup is None:
+            return
+        startup.register_wake(
+            db,
+            wake_kind=startup.WAKE_APPROVAL,
+            task_id=task_id,
+            goal_id=goal_id,
+            wake_at=expires,
+            payload={"reason": "approval_pending"},
+        )
+    except Exception:
         pass
 
 

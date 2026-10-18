@@ -1,4 +1,23 @@
-projects: []
+# Explicit project registration (V0.6.4).
+# Keys must match directory names under workspace/projects.
+# Unregistered projects must not be planned or mutated.
+
+projects:
+  - key: sandbox-test-project
+    name: Sandbox Test Project
+    repository: local
+  - key: demo-project
+    name: Demo Project
+    repository: local
+  - key: v060-live-test
+    name: V0.6.0 Live Test
+    repository: local
+  - key: concurrent-test-a
+    name: Concurrent Test A
+    repository: local
+  - key: concurrent-test-b
+    name: Concurrent Test B
+    repository: local
 
 rules:
   require_explicit_registration: true

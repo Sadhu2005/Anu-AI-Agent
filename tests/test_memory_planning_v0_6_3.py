@@ -35,6 +35,15 @@ def make_db():
     db.execute("PRAGMA foreign_keys = ON")
     db.executescript(
         """
+        CREATE TABLE projects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_key TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            repository TEXT NOT NULL,
+            workspace TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE goals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id INTEGER,

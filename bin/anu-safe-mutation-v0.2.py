@@ -78,7 +78,31 @@ def fail(message, code=1):
     raise SystemExit(code)
 
 
+def _require_project_registered(project_name):
+    """V0.6.4: refuse mutation on unregistered projects when rule enabled."""
+    try:
+        pi = _load_sibling(
+            BASE / 'bin' / 'anu-project-intelligence-v0.1.py',
+            'anu_project_intelligence_v0_1_sm',
+        )
+    except Exception:
+        # Prefer checkout sibling.
+        try:
+            pi = _load_sibling(
+                Path(__file__).resolve().parent / 'anu-project-intelligence-v0.1.py',
+                'anu_project_intelligence_v0_1_sm',
+            )
+        except Exception:
+            return
+    try:
+        pi.require_registered(project_name)
+    except Exception as exc:
+        # ProjectRegistrationError and path errors.
+        fail(str(exc))
+
+
 def resolve_project(project_name):
+    _require_project_registered(project_name)
     paths = _paths()
     try:
         return paths.resolve_project(WORKSPACE, project_name)

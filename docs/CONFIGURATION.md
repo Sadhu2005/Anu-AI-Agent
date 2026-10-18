@@ -99,8 +99,9 @@ Limits: read 256 KB, write 512 KB, 200 list entries, 100 search results, 5000 fi
 
 Rules: explicit registration required, one repository per project, repository
 must match exactly, production deployment requires approval.
-`projects: []` is currently empty even though `sandbox-test-project` exists in
-the workspace (to be resolved in V0.6.4).
+V0.6.4: `projects` lists registered workspace keys (e.g. `sandbox-test-project`).
+Unregistered directories are rejected by Project Intelligence / Safe Mutation /
+template expand when `require_explicit_registration: true`.
 
 ## `anu-policy.yaml` (declarative)
 

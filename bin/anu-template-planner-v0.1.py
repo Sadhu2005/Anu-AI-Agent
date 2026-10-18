@@ -220,6 +220,13 @@ def _load_observation_memory():
     )
 
 
+def _load_project_intelligence():
+    return _load_module(
+        _module_path("anu-project-intelligence-v0.1.py"),
+        "anu_project_intelligence_v0_1_planner",
+    )
+
+
 def _memory_hints_for_project(db, project):
     """Best-effort V0.6.3 retrieval; never fails planning."""
     try:
@@ -233,6 +240,28 @@ def _memory_hints_for_project(db, project):
             "memories": [],
             "repeated_failure": False,
             "failure_classes": [],
+            "hints": [],
+        }
+
+
+def _project_context_for_planning(db, project):
+    """V0.6.4: require registration and attach project model summary."""
+    pi = _load_project_intelligence()
+    # Fail closed on unregistered projects.
+    pi.require_registered(project)
+    try:
+        return pi.planner_project_context(db, project, refresh=True)
+    except Exception as exc:
+        # Registration already passed; model refresh is best-effort.
+        return {
+            "project_key": project,
+            "registered": True,
+            "error": str(exc),
+            "file_count": None,
+            "has_tests": None,
+            "known_problem_count": 0,
+            "repeated_failure": False,
+            "top_level": [],
             "hints": [],
         }
 
@@ -273,8 +302,22 @@ def expand_goal(
     if goal is None:
         raise ValueError(f"goal does not exist: goal_id={goal_id}")
 
+    project_ctx = _project_context_for_planning(db, project)
     memory = _memory_hints_for_project(db, project)
     plan_dict = build_plan_dict(goal_id, template_name, plan_id=plan_id)
+
+    # V0.6.4: planner decisions reference project state.
+    for action in plan_dict["actions"]:
+        action["parameters"]["project_registered"] = True
+        action["parameters"]["project_file_count"] = project_ctx.get("file_count")
+        action["parameters"]["project_has_tests"] = project_ctx.get("has_tests")
+        action["parameters"]["project_known_problems"] = project_ctx.get(
+            "known_problem_count"
+        )
+        if project_ctx.get("top_level"):
+            action["parameters"]["project_top_level"] = list(
+                project_ctx["top_level"]
+            )[:20]
 
     # V0.6.3: repeated failures from memory change the planned parameters.
     if memory.get("hints"):
@@ -351,6 +394,7 @@ def expand_goal(
         "plan": plan_record,
         "tasks": created,
         "memory": memory,
+        "project": project_ctx,
     }
 
 

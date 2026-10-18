@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.7.2] — in progress · branch `v0.7.2-integration`
+## [V0.7.2] — 2026-10-18 · tag `v0.7.2`
 
 Optional LLM planner via model gateway; template fallback.
 
@@ -12,6 +12,7 @@ Optional LLM planner via model gateway; template fallback.
 - Config `planner:` block (`mode: llm_optional | template_only`)
 - Goal-cycle loads LLM planner when `llm_optional`
 - Pack: `run_v0_7_2_regression.py` (LLM + gateway tests)
+- Pi: regression **3/3**; live expand `template_fallback` (LM Studio tool-JSON)
 
 ## [V0.7.1] — 2026-10-18 · tag `v0.7.1`
 

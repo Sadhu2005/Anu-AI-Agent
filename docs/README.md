@@ -71,7 +71,7 @@ the next version.
 | Version | Title | Status |
 |---|---|---|
 | [V0.7.1](versions/v0.7.1.md) | Model gateway | Frozen · tag `v0.7.1` |
-| [V0.7.2](versions/v0.7.2.md) | Optional LLM planner | In progress · `v0.7.2-integration` |
+| [V0.7.2](versions/v0.7.2.md) | Optional LLM planner | Frozen · tag `v0.7.2` |
 
 ## Working Rules
 

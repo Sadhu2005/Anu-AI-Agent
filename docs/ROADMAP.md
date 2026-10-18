@@ -96,8 +96,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.7.2](versions/v0.7.2.md) optional LLM planner on `v0.7.2-integration`
-(gateway propose + template fallback). V0.7.1 is frozen (tag `v0.7.1`).
+V0.7.2 is frozen (tag `v0.7.2`): optional LLM planner + template fallback.
+Next: operator choice (e.g. LM Studio tool-call unwrap, or next roadmap slice).
 
 ## Model gateway (V0.7.1 frozen)
 

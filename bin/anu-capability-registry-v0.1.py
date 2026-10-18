@@ -139,8 +139,9 @@ SANDBOX_COMMAND_SPECS = {
     },
 }
 
-# research / browser stay unregistered until V0.6.7 approval exists.
-# filesystem.write deferred until executor reuse + F3 complete.
+# research / browser / filesystem.write remain disabled at invoke time until
+# an APPROVAL is granted via anu-approval-service (V0.6.7). Classification
+# maps them to APPROVAL; registry still fail-closed without a grant.
 DISABLED_CAPABILITIES = frozenset({
     "research",
     "browser",

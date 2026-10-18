@@ -943,6 +943,75 @@ def cmd_status(config):
     )
 
 
+def _record_approval_required(command_name, project, task_id, decision):
+    """Best-effort V0.6.7 approval record when Governor returns APPROVAL."""
+    payload = {"approval_id": None, "recorded": False}
+    try:
+        import importlib.util
+        approval_path = BASE / "bin" / "anu-approval-service-v0.1.py"
+        if not approval_path.is_file():
+            approval_path = Path(__file__).resolve().parent / "anu-approval-service-v0.1.py"
+        if not approval_path.is_file():
+            return payload
+        spec = importlib.util.spec_from_file_location(
+            "anu_approval_service_v0_1_gateway",
+            approval_path,
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        db = mod.db_connect(DB_FILE)
+        try:
+            mod.migrate(db)
+            goal_id = None
+            if task_id is not None:
+                try:
+                    row = db.execute(
+                        "SELECT goal_id FROM tasks WHERE id = ?",
+                        (task_id,),
+                    ).fetchone()
+                    if row:
+                        goal_id = row[0]
+                except Exception:
+                    goal_id = None
+            size_mb = None
+            if isinstance(decision, dict):
+                size_mb = decision.get("requested_size_mb")
+            record = mod.request_approval(
+                db,
+                action=command_name,
+                task_id=task_id,
+                goal_id=goal_id,
+                reason=(
+                    decision.get("reason")
+                    if isinstance(decision, dict)
+                    else "governor_approval"
+                ),
+                risk="medium",
+                proposed_change=json.dumps({
+                    "command": command_name,
+                    "project": project,
+                    "size_mb": size_mb,
+                }, sort_keys=True),
+                put_task_waiting=task_id is not None,
+            )
+            payload["approval_id"] = record.get("id")
+            payload["recorded"] = True
+            write_event(
+                "APPROVAL_REQUIRED",
+                f"{command_name}: approval {record.get('id')}",
+                {
+                    "project": project,
+                    "task_id": task_id,
+                    "approval_id": record.get("id"),
+                },
+            )
+        finally:
+            db.close()
+    except Exception as exc:
+        payload["error"] = f"{type(exc).__name__}: {exc}"
+    return payload
+
+
 def cmd_run(config, command_name, project, task_id=None):
     gateway = config.get("gateway", {})
     if not gateway.get("enabled", False):
@@ -997,8 +1066,20 @@ def cmd_run(config, command_name, project, task_id=None):
         )
 
     if decision_name == "APPROVAL":
+        # V0.6.7: record approval request and park task when task_id known.
+        approval_payload = _record_approval_required(
+            command_name=command_name,
+            project=project,
+            task_id=task_id,
+            decision=decision,
+        )
         raise PermissionError(
             "Execution requires approval."
+            + (
+                f" approval_id={approval_payload.get('approval_id')}"
+                if approval_payload.get("approval_id")
+                else ""
+            )
         )
 
     if decision_name == "PREFLIGHT":

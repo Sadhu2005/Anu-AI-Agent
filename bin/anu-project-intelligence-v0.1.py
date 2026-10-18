@@ -167,6 +167,32 @@ def require_registered(project_key, config=None):
     return key
 
 
+def production_deployment_requires_approval(config=None):
+    """V0.6.7: whether production-impacting actions need a human approval."""
+    config = config or load_projects_config()
+    rules = config.get("rules") or {}
+    return bool(rules.get("production_deployment_requires_approval", True))
+
+
+def gate_production_deployment(db, *, task_id=None, goal_id=None, proposed_change=None):
+    """Raise or return approval wait when production deploy is attempted."""
+    if not production_deployment_requires_approval():
+        return {"classification": "AUTONOMOUS", "approval": None}
+    approval = _load(
+        "anu-approval-service-v0.1.py",
+        "anu_approval_service_v0_1_pi",
+    )
+    approval.migrate(db)
+    return approval.require_autonomous_or_approved(
+        db,
+        action="production_deployment",
+        task_id=task_id,
+        goal_id=goal_id,
+        production_impacting=True,
+        proposed_change=proposed_change,
+    )
+
+
 def get_project(db, project_key):
     db = _require_db(db)
     paths = _load("anu-project-paths-v0.1.py", "anu_project_paths_pi")

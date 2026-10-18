@@ -3,6 +3,16 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.6.7] — in progress · branch `v0.6.7-integration`
+
+Human approval boundary: AUTONOMOUS / APPROVAL / DENY.
+
+- `anu-approval-service-v0.1.py` + enriched `approvals` (`0009_v0_6_7.sql`)
+- CLI request / list / approve / reject / expire; task WAITING → pending on grant
+- Gateway records approval when Governor returns APPROVAL
+- Production deploy gate via project intelligence rule
+- Portable regression pending Pi evidence
+
 ## [V0.6.6] — 2026-10-18 · tag `v0.6.6`
 
 Resource-aware intelligence: work selection from machine conditions.

@@ -60,7 +60,7 @@ the next version.
 
 | Version | Title | Status |
 |---|---|---|
-| [V0.6.2](versions/v0.6.2.md) | Capabilities | Step 1 (capability registry) |
+| [V0.6.2](versions/v0.6.2.md) | Capabilities | Step 2 (policy denial + audit) |
 
 ### Planned
 

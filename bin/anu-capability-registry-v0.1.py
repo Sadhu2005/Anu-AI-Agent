@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -27,6 +29,63 @@ _REPO = _HERE.parent
 
 GATEWAY_CONFIG = BASE / "config" / "anu-command-gateway.yaml"
 PROFILE_CONFIG = BASE / "config" / "anu-execution-profiles.yaml"
+DB_FILE = BASE / "brain" / "anu-brain.db"
+
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def audit_capability_event(
+    db,
+    event_type,
+    message,
+    metadata=None,
+    *,
+    task_id=None,
+    goal_id=None,
+):
+    """Write a capability audit row to agent_events (best-effort)."""
+    if db is None or not hasattr(db, "execute"):
+        raise TypeError("db must provide an execute() method")
+    if not isinstance(event_type, str) or not event_type.strip():
+        raise ValueError("event_type must be a non-empty string")
+    if not isinstance(message, str):
+        raise TypeError("message must be a string")
+
+    metadata = dict(metadata or {})
+    if task_id is not None:
+        if isinstance(task_id, bool) or not isinstance(task_id, int):
+            raise TypeError("task_id must be an integer or None")
+        metadata.setdefault("task_id", task_id)
+    if goal_id is not None:
+        if isinstance(goal_id, bool) or not isinstance(goal_id, int):
+            raise TypeError("goal_id must be an integer or None")
+        metadata.setdefault("goal_id", goal_id)
+
+    try:
+        db.execute(
+            """INSERT INTO agent_events
+                   (task_id, goal_id, parent_task_id, run_id, attempt,
+                    event_type, message, metadata, created_at)
+               VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?)""",
+            (
+                task_id,
+                goal_id,
+                event_type.strip(),
+                message,
+                json.dumps(metadata, sort_keys=True),
+                now_iso(),
+            ),
+        )
+        db.commit()
+        return True
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
 
 # Friendly capability names from the V0.6.2 design map onto gateway commands.
 # Only aliases that resolve to a registered command are exposed.
@@ -304,6 +363,95 @@ class CapabilityRegistry:
             },
         }
 
+    def evaluate_request(
+        self,
+        name,
+        arguments=None,
+        *,
+        db=None,
+        task_id=None,
+        goal_id=None,
+    ):
+        """Admit or deny a capability request and always audit when ``db`` is set.
+
+        Returns a structured decision. Denials do not raise — callers must
+        treat ``admitted is False`` as fail-closed.
+        """
+        arguments = {} if arguments is None else arguments
+        request_meta = {
+            "capability": name,
+            "arguments": arguments if isinstance(arguments, dict) else None,
+        }
+        if db is not None:
+            audit_capability_event(
+                db,
+                "CAPABILITY_REQUEST",
+                f"capability request: {name}",
+                request_meta,
+                task_id=task_id,
+                goal_id=goal_id,
+            )
+
+        try:
+            validated = self.validate_invocation(name, arguments)
+        except PermissionError as exc:
+            reason = str(exc)
+            denial_class = "disabled" if "disabled" in reason else "unknown"
+            decision = {
+                "admitted": False,
+                "denied": True,
+                "reason": reason,
+                "denial_class": denial_class,
+                "capability": name if isinstance(name, str) else None,
+            }
+            if db is not None:
+                audit_capability_event(
+                    db,
+                    "CAPABILITY_DENIED",
+                    f"capability denied: {name}",
+                    decision,
+                    task_id=task_id,
+                    goal_id=goal_id,
+                )
+            return decision
+        except (ValueError, TypeError) as exc:
+            decision = {
+                "admitted": False,
+                "denied": True,
+                "reason": str(exc),
+                "denial_class": "contract",
+                "capability": name if isinstance(name, str) else None,
+            }
+            if db is not None:
+                audit_capability_event(
+                    db,
+                    "CAPABILITY_DENIED",
+                    f"capability denied: {name}",
+                    decision,
+                    task_id=task_id,
+                    goal_id=goal_id,
+                )
+            return decision
+
+        decision = {
+            "admitted": True,
+            "denied": False,
+            "capability": validated["capability"],
+            "command": validated["command"],
+            "profile": validated["profile"],
+            "arguments": validated["arguments"],
+        }
+        if db is not None:
+            audit_capability_event(
+                db,
+                "CAPABILITY_ADMITTED",
+                f"capability admitted: {validated['capability']}",
+                decision,
+                task_id=task_id or validated["arguments"].get("task_id"),
+                goal_id=goal_id,
+            )
+        return decision
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
@@ -311,6 +459,7 @@ def main(argv=None):
     )
     parser.add_argument("--gateway-config", default=None)
     parser.add_argument("--profile-config", default=None)
+    parser.add_argument("--db", default=None)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("list")
@@ -324,6 +473,12 @@ def main(argv=None):
     val_p.add_argument("--name", required=True)
     val_p.add_argument("--project", required=True)
     val_p.add_argument("--task-id", type=int, default=None)
+
+    admit_p = sub.add_parser("admit")
+    admit_p.add_argument("--name", required=True)
+    admit_p.add_argument("--project", required=True)
+    admit_p.add_argument("--task-id", type=int, default=None)
+    admit_p.add_argument("--goal-id", type=int, default=None)
 
     args = parser.parse_args(argv)
     registry = CapabilityRegistry.from_files(
@@ -363,6 +518,26 @@ def main(argv=None):
             return 1
         print(json.dumps({"ok": True, "result": result}, indent=2))
         return 0
+    if args.cmd == "admit":
+        db = None
+        db_path = args.db or (str(DB_FILE) if DB_FILE.is_file() else None)
+        if db_path:
+            db = sqlite3.connect(db_path)
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA foreign_keys = ON")
+        try:
+            decision = registry.evaluate_request(
+                args.name,
+                {"project": args.project, "task_id": args.task_id},
+                db=db,
+                task_id=args.task_id,
+                goal_id=args.goal_id,
+            )
+            print(json.dumps({"ok": True, "decision": decision}, indent=2))
+            return 0 if decision.get("admitted") else 1
+        finally:
+            if db is not None:
+                db.close()
 
     parser.error(f"unknown command: {args.cmd}")
     return 2

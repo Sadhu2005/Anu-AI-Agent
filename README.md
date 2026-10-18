@@ -28,10 +28,10 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.6.2 frozen (tag `v0.6.2`); active **`v0.6.3-integration`** |
-| **Proven** | V0.5.9–V0.6.2 as before; V0.6.3 observation/memory step 1 in progress |
-| **Maturity** | V0.6.2 **100%** · V0.6.3 **~50%** (capture, memory, planner hints) |
-| **Next** | V0.6.3 regression on Pi, then freeze |
+| **Version** | V0.6.3 frozen (tag `v0.6.3`); branch **`v0.6.3-integration`** |
+| **Proven** | V0.5.9–V0.6.2 as before; V0.6.3 observation→memory→retrieve on Pi |
+| **Maturity** | V0.6.2 **100%** · V0.6.3 **100%** |
+| **Next** | Project intelligence (V0.6.4) |
 | **Then** | V0.6.x verification, resources, approval → V0.7.0 agent runtime |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.

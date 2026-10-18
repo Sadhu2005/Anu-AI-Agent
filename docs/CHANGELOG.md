@@ -3,13 +3,13 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.6.3] — in progress · branch `v0.6.3-integration`
+## [V0.6.3] — 2026-10-18 · tag `v0.6.3`
 
 Memory / observation: capability outcomes become durable, retrievable memory.
 
 - `observations` capture + additive `agent_memories` (provenance, TTL, prune)
 - Capability adapter records results; template expand uses retrieval hints
-- Portable regression: capture, expiry, repeated-failure plan change
+- Portable regression 2/2; Pi live: invoke → observation/memory id 1 → retrieve
 
 ## [V0.6.2] — 2026-10-18 · tag `v0.6.2`
 

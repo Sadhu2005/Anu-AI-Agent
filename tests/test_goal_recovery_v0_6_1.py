@@ -192,7 +192,8 @@ def test_replan_supersedes_and_expands():
         assert result["goal"]["status"] == "active"
         assert result["expansion"]["plan"]["plan_id"] == "plan-rec-2"
         assert result["expansion"]["plan"]["version"] == 2
-        assert len(result["expansion"]["tasks"]) == 6
+        # V0.8.2+: default template is multi_stage_goal (5 stages).
+        assert len(result["expansion"]["tasks"]) == 5
 
         plans = load(
             REPO / "bin" / "anu-goal-plan-service-v0.1.py",
@@ -207,7 +208,7 @@ def test_replan_supersedes_and_expands():
             "SELECT COUNT(*) AS n FROM tasks "
             "WHERE goal_id=1 AND status='pending'"
         ).fetchone()["n"]
-        assert pending == 6
+        assert pending == 5
 
         events = [
             r["event_type"]

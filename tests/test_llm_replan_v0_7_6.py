@@ -200,7 +200,8 @@ def test_replan_gateway_down_template_fallback():
             project="sandbox-test-project",
         )
         assert result["source"] == "template_fallback"
-        assert len(result["expansion"]["tasks"]) == 6
+        # V0.8.2+: default fallback is multi_stage_goal (5 stages).
+        assert len(result["expansion"]["tasks"]) == 5
         meta = json.loads(
             db.execute(
                 "SELECT metadata FROM agent_events "
@@ -240,7 +241,8 @@ def test_replan_template_only_never_calls_gateway():
         )
         # Template planner does not set source; recovery defaults to "template"
         assert result["source"] in ("template", "template_only")
-        assert len(result["expansion"]["tasks"]) == 6
+        # V0.8.2+: default template is multi_stage_goal (5 stages).
+        assert len(result["expansion"]["tasks"]) == 5
         assert called == []
     finally:
         db.close()

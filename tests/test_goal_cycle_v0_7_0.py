@@ -119,7 +119,8 @@ def test_expand_then_sync_completes():
         expand = cycle.expand_pending_goals(db, max_goals=1)
         assert expand["expanded_count"] == 1, expand
         assert expand["expanded"][0]["goal_id"] == 1
-        assert expand["expanded"][0]["task_count"] == 6
+        # V0.8.2+: default template is multi_stage_goal (5 stages).
+        assert expand["expanded"][0]["task_count"] == 5
 
         goal = db.execute("SELECT status FROM goals WHERE id = 1").fetchone()
         assert goal["status"] == "active"

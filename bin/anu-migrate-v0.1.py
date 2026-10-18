@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Apply ordered SQL migrations and record them in schema_migrations.
 
-Idempotent: re-running skips files whose version is already recorded.
-Migration version is the filename stem (e.g. 0005_schema_migrations).
+Idempotent for both fresh and already-populated Brains:
+- versions already in ``schema_migrations`` are skipped
+- statements that raise "already exists" / "duplicate column name" are
+  treated as satisfied (live DBs predate the runner)
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -21,6 +24,20 @@ DEFAULT_DB = BASE / "brain" / "anu-brain.db"
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parent
 MIGRATIONS_DIR = _REPO / "migrations"
+
+# If these objects exist, the corresponding baseline migration is already live.
+BASELINE_PRESENT = {
+    "0001_initial": "SELECT 1 FROM sqlite_master WHERE type='table' AND name='projects'",
+    "0002_v0_6_0": (
+        "SELECT 1 FROM pragma_table_info('tasks') WHERE name='failure_class'"
+    ),
+    "0003_v0_6_1": "SELECT 1 FROM sqlite_master WHERE type='table' AND name='goal_plans'",
+}
+
+_IGNORABLE = (
+    "already exists",
+    "duplicate column name",
+)
 
 
 def now_iso():
@@ -59,37 +76,86 @@ def migration_files(migrations_dir: Path) -> list[Path]:
     return sorted(migrations_dir.glob("*.sql"), key=lambda p: p.name)
 
 
-def apply_file(db, path: Path) -> bool:
-    """Apply one migration; return True if applied, False if already recorded."""
-    version = path.stem
-    if version in applied_versions(db):
+def _split_statements(sql: str) -> list[str]:
+    """Split SQL on semicolons; keep non-empty, non-comment-only chunks."""
+    parts = []
+    for chunk in sql.split(";"):
+        lines = []
+        for line in chunk.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("--"):
+                continue
+            lines.append(line)
+        text = "\n".join(lines).strip()
+        if text:
+            parts.append(text)
+    return parts
+
+
+def _baseline_already_live(db, version: str) -> bool:
+    probe = BASELINE_PRESENT.get(version)
+    if not probe:
         return False
-    sql = path.read_text(encoding="utf-8")
-    db.executescript(sql)
+    try:
+        return db.execute(probe).fetchone() is not None
+    except sqlite3.Error:
+        return False
+
+
+def _record_applied(db, version: str):
     db.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+        "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
         (version, now_iso()),
     )
+
+
+def apply_file(db, path: Path) -> str:
+    """Apply one migration.
+
+    Returns ``applied``, ``recorded`` (baseline already live), or ``skipped``.
+    """
+    version = path.stem
+    if version in applied_versions(db):
+        return "skipped"
+
+    if _baseline_already_live(db, version):
+        _record_applied(db, version)
+        db.commit()
+        return "recorded"
+
+    sql = path.read_text(encoding="utf-8")
+    # Strip block-style noise; keep statement split tolerant of comments.
+    sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
+    for stmt in _split_statements(sql):
+        try:
+            db.execute(stmt)
+        except sqlite3.OperationalError as exc:
+            msg = str(exc).lower()
+            if any(token in msg for token in _IGNORABLE):
+                continue
+            raise
+    _record_applied(db, version)
     db.commit()
-    return True
+    return "applied"
 
 
 def run_migrate(db_path: Path, migrations_dir: Path) -> dict:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     applied: list[str] = []
+    recorded: list[str] = []
     skipped: list[str] = []
     db = db_connect(db_path)
     try:
         ensure_schema_migrations_table(db)
-        done = applied_versions(db)
         for path in migration_files(migrations_dir):
+            outcome = apply_file(db, path)
             version = path.stem
-            if version in done:
+            if outcome == "applied":
+                applied.append(version)
+            elif outcome == "recorded":
+                recorded.append(version)
+            else:
                 skipped.append(version)
-                continue
-            apply_file(db, path)
-            applied.append(version)
-            done.add(version)
     finally:
         db.close()
     return {
@@ -97,6 +163,7 @@ def run_migrate(db_path: Path, migrations_dir: Path) -> dict:
         "db": str(db_path),
         "migrations_dir": str(migrations_dir),
         "applied": applied,
+        "recorded_baseline": recorded,
         "skipped": skipped,
     }
 

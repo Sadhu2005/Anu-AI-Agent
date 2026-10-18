@@ -43,7 +43,7 @@ V0.6.5       ████████████████████  100%
 V0.6.6       ████████████████████  100%
 V0.6.7       ████████████████████  100%
 V0.6.8       ████████████████████  100%
-V0.6.9       ░░░░░░░░░░░░░░░░░░░░  0%
+V0.6.9       ████████░░░░░░░░░░░░   40%  (G1/G2 in-repo + boundary check)
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
 
@@ -93,11 +93,11 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.6.9](versions/v0.6.9.md) pre-7.0 hardening (security release).
+Finish [V0.6.9](versions/v0.6.9.md) on Pi: deploy unit, `chown` tests/.git,
+negative probes, `BOUNDARY_CHECK`, then freeze + feature freeze.
 
-V0.6.8 is frozen (tag `v0.6.8`): startup recovery, durable wakes,
-log rotation, Pi live evidence
-([versions/v0.6.8.md](versions/v0.6.8.md)).
+V0.6.8 is frozen (tag `v0.6.8`). V0.6.9 step 1 is on
+`v0.6.9-integration`: G1/G2 config, boundary self-check, G4/G6 ADRs.
 
 ## Model gateway (separate release)
 

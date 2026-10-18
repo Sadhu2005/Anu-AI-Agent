@@ -17,6 +17,7 @@ GUARDIAN = BASE / "bin" / "anu-resource-guardian.py"
 SCHEDULER = BASE / "bin" / "anu-task-scheduler-v0.1.py"
 RECOVERY = BASE / "bin" / "anu-recovery-v0.1.py"
 STARTUP = BASE / "bin" / "anu-startup-recovery-v0.1.py"
+BOUNDARY = BASE / "bin" / "anu-boundary-check-v0.1.py"
 DB_FILE = BASE / "brain" / "anu-brain.db"
 SCHEDULER_LOCK_FILE = BASE / "runtime" / "anu-scheduler.lock"
 EXECUTION_LOCK_FILE = BASE / "runtime" / "anu-execution.lock"
@@ -29,6 +30,8 @@ SCHEDULER_MAX_TASKS = 1
 
 running = True
 recovery_done = False
+boundary_ok = True
+boundary_checked = False
 
 
 def now():
@@ -208,7 +211,75 @@ def scheduler_execution_allowed(guardian_data):
     )
 
 
+def _load_boundary():
+    for candidate in (
+        BOUNDARY,
+        _HERE / "anu-boundary-check-v0.1.py",
+    ):
+        if not candidate.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location(
+            "anu_boundary_check_v0_1_runtime",
+            candidate,
+        )
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    return None
+
+
+def run_boundary_self_check():
+    """V0.6.9: probe RO/RW paths; fail closed on scheduling if wrong."""
+    global boundary_ok, boundary_checked
+    boundary = _load_boundary()
+    if boundary is None:
+        boundary_checked = True
+        boundary_ok = True
+        write_log("Boundary check skipped: module missing")
+        return {"ok": True, "skipped": True}
+
+    result = boundary.run_boundary_check(base=BASE)
+    boundary_checked = True
+    boundary_ok = bool(result.get("ok"))
+    write_log(
+        f"Boundary check: ok={boundary_ok} "
+        f"paths={len(result.get('results', []))}"
+    )
+
+    try:
+        import sqlite3
+        db = sqlite3.connect(str(DB_FILE))
+        try:
+            boundary.record_boundary_event(db, result)
+        finally:
+            db.close()
+    except Exception as exc:
+        write_log(
+            f"Boundary event record failed: {type(exc).__name__}: {exc}"
+        )
+
+    save_state({
+        "agent": "ANU",
+        "status": "boundary_ok" if boundary_ok else "boundary_fail",
+        "boundary_ok": boundary_ok,
+        "boundary_checked_at": now(),
+        "heartbeat_at": now(),
+    })
+    return result
+
+
 def run_agent_scheduler_cycle(guardian_data):
+    if not boundary_ok:
+        write_log(
+            "Scheduler skipped: BOUNDARY_CHECK failed (fail closed)"
+        )
+        return {
+            "status": "SKIPPED_BOUNDARY",
+            "boundary_ok": False,
+        }
+
     if not scheduler_execution_allowed(guardian_data):
         status = (
             guardian_data.get("status", "UNKNOWN")
@@ -351,6 +422,9 @@ def run_runtime_iteration():
                 "status": "SKIPPED_RECOVERY_PENDING",
             }
 
+    if not boundary_checked:
+        run_boundary_self_check()
+
     return run_agent_scheduler_cycle(data)
 
 
@@ -365,6 +439,9 @@ def main():
         "status": "starting",
         "started_at": now(),
     })
+
+    # V0.6.9: boundary probe before the first scheduling cycle.
+    run_boundary_self_check()
 
     while running:
 

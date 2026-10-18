@@ -3,6 +3,16 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.6.9] — in progress · branch `v0.6.9-integration`
+
+Pre-7.0 hardening (security release).
+
+- G1/G2: `secrets` + `tests` → ReadOnlyPaths (unit + `anu-policy.yaml`)
+- Boundary self-check at runtime startup; fail-closed scheduling
+- ADR-015 (G4 logs), ADR-016 (G6 operator docker)
+- Failure-injection pack + portable regression
+- Pi negative evidence (chown / EROFS / BOUNDARY_CHECK) pending
+
 ## [V0.6.8] — 2026-10-18 · tag `v0.6.8`
 
 Long-running agent: durable resume across restart.

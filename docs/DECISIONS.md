@@ -457,6 +457,59 @@ Together they produce the core ANU philosophy:
 
 ---
 
+## ADR-015: Journal Is Authoritative Audit; Agent Logs Are Operational
+
+| | |
+|---|---|
+| **Status** | Accepted |
+| **Since** | V0.6.9 (SECURITY G4) |
+| **Enforced in** | systemd journal; `logs/` remains agent-writable |
+
+**Decision:** Accept that `logs/` is writable by `anu-agent`. The systemd
+journal (and `agent_events` in the Brain) are the authoritative audit
+records. Agent JSONL logs are operational diagnostics, not the security
+audit of record.
+
+**Why:** Closing G4 by making logs read-only would break operational
+debugging without improving the audit trail the operator already has via
+journald and Brain events.
+
+> **Principle:** Prefer an existing authoritative audit channel over
+> inventing a second immutable log the agent cannot write.
+
+**Trade-offs:** A compromised agent process can still alter or truncate
+its own JSONL files. Journal and Brain integrity remain the control.
+
+**Revisit when:** ANU gains a remote append-only audit sink.
+
+---
+
+## ADR-016: Operator Docker Group Accepted With Key Protection
+
+| | |
+|---|---|
+| **Status** | Accepted |
+| **Since** | V0.6.9 (SECURITY G6) |
+| **Enforced in** | host operator account; `anu-sandboxd` peer-cred gate |
+
+**Decision:** Accept that the human operator account may be in the
+`docker` group, under the key-protection conditions in SECURITY.md
+(operator keys are not ANU secrets; ANU itself has no Docker access).
+
+**Why:** Root-owned `anu-sandboxd` is the only path ANU uses for
+containers. Removing the operator from `docker` would hinder maintenance
+without changing ANU's own privilege boundary.
+
+> **Principle:** Separate the agent's privileges from the operator's.
+
+**Trade-offs:** A compromised operator session can use Docker. That is
+an operator-workstation risk, not an ANU service capability.
+
+**Revisit when:** Multi-operator or remote administration requires
+stricter separation.
+
+---
+
 ## Adding a Decision
 
 Copy this block, give it the next number, and never delete an old entry; mark

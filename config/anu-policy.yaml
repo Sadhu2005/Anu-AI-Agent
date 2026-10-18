@@ -19,13 +19,14 @@ filesystem:
     - /srv/anu/logs
     - /srv/anu/runtime
     - /srv/anu/checkpoints
-    - /srv/anu/secrets
-    - /srv/anu/tests
 
   read_only:
     - /srv/anu/config
     - /srv/anu/src
     - /srv/anu/bin
+    # V0.6.9 G1/G2: agent must not modify secrets or its own tests.
+    - /srv/anu/secrets
+    - /srv/anu/tests
 
   forbidden:
     - /etc

@@ -28,10 +28,10 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.6.8 frozen (tag `v0.6.8`); branch **`v0.6.8-integration`** |
-| **Proven** | V0.5.9–V0.6.7 as before; V0.6.8 startup recovery + log rotate on Pi |
-| **Maturity** | V0.6.7 **100%** · V0.6.8 **100%** |
-| **Next** | Pre-7.0 hardening (V0.6.9) |
+| **Version** | V0.6.9 in progress; branch **`v0.6.9-integration`** (V0.6.8 frozen) |
+| **Proven** | V0.5.9–V0.6.8 as before; V0.6.9 G1/G2 unit+policy + boundary check |
+| **Maturity** | V0.6.8 **100%** · V0.6.9 **~40%** (Pi negative evidence pending) |
+| **Next** | Pi deploy unit, chown, BOUNDARY_CHECK, then freeze |
 | **Then** | V0.7.0 agent runtime |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.

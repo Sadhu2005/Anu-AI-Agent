@@ -57,6 +57,9 @@ RestrictAddressFamilies=AF_UNIX
 ReadOnlyPaths=/srv/anu/config
 ReadOnlyPaths=/srv/anu/bin
 ReadOnlyPaths=/srv/anu/src
+# V0.6.9 G1/G2: secrets and tests are not writable by the agent.
+ReadOnlyPaths=/srv/anu/secrets
+ReadOnlyPaths=/srv/anu/tests
 
 ReadWritePaths=/srv/anu/home
 ReadWritePaths=/srv/anu/brain
@@ -65,8 +68,6 @@ ReadWritePaths=/srv/anu/sandbox
 ReadWritePaths=/srv/anu/browser
 ReadWritePaths=/srv/anu/logs
 ReadWritePaths=/srv/anu/runtime
-ReadWritePaths=/srv/anu/secrets
-ReadWritePaths=/srv/anu/tests
 
 # Make ANU disposable under system memory pressure.
 OOMScoreAdjust=500

@@ -3,13 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.6.4] — in progress · branch `v0.6.4-integration`
+## [V0.6.4] — 2026-10-18 · tag `v0.6.4`
 
 Project intelligence: registered projects get a refreshed structured model.
 
 - `anu-projects.yaml` is the explicit allow-list; Brain `projects` + `project_models`
 - Read-only scanner (files/tests/deps/history/known problems from memory)
 - Planner and Safe Mutation refuse unregistered projects
+- Pi: sync 5 projects; scan `sandbox-test-project`; regression 2/2
 
 ## [V0.6.3] — 2026-10-18 · tag `v0.6.3`
 

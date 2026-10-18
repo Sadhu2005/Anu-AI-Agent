@@ -38,7 +38,7 @@ V0.6.1       ████████████████████  100%
 V0.6.1b      ████████████████████  100% (with V0.6.2)
 V0.6.2       ████████████████████  100%
 V0.6.3       ████████████████████  100%
-V0.6.4       ████████████░░░░░░░░  ~60% (registration + scan + gates)
+V0.6.4       ████████████████████  100%
 V0.6.5–.9    ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
@@ -89,9 +89,11 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.6.4](versions/v0.6.4.md) project intelligence — step 1 on
-`v0.6.4-integration` (YAML registration, scan model, planner/mutation
-gates). Next: Pi evidence, then freeze.
+[V0.6.5](versions/v0.6.5.md) verification / evaluation.
+
+V0.6.4 is frozen (tag `v0.6.4`): project registration, scan model,
+planner/mutation gates, Pi live evidence
+([versions/v0.6.4.md](versions/v0.6.4.md)).
 
 ## Model gateway (separate release)
 

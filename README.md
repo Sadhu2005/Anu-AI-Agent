@@ -28,10 +28,10 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.6.3 frozen (tag `v0.6.3`); active **`v0.6.4-integration`** |
-| **Proven** | V0.5.9–V0.6.3 as before; V0.6.4 project registration/scan in progress |
-| **Maturity** | V0.6.3 **100%** · V0.6.4 **~60%** (registration + model + gates) |
-| **Next** | V0.6.4 Pi evidence, then freeze |
+| **Version** | V0.6.4 frozen (tag `v0.6.4`); branch **`v0.6.4-integration`** |
+| **Proven** | V0.5.9–V0.6.3 as before; V0.6.4 registration/scan/gates on Pi |
+| **Maturity** | V0.6.3 **100%** · V0.6.4 **100%** |
+| **Next** | Verification / evaluation (V0.6.5) |
 | **Then** | V0.6.x verification, resources, approval → V0.7.0 agent runtime |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.

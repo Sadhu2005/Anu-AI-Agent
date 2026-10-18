@@ -3,14 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.8.1] — 2026-10-18 · branch `v0.8.1-integration`
+## [V0.8.1] — 2026-10-18 · tag `v0.8.1`
 
 Structured recovery from verification (retry / wait / block / escalate).
 
 - `anu-verification-v0.1.py`: `recovery_policy_for_verification`
 - `anu-task-engine-v0.5.3.py`: `retry_after` + `TASK_RECOVERY_POLICY`
 - Pack: `run_v0_8_1_regression.py`
-- Pi smoke pending before freeze tag `v0.8.1`
+- Pi: regression **2/2**; RETRY→retry/escalate, ROLLBACK→block
 
 ## [V0.8.0] — 2026-10-18 · tag `v0.8.0`
 

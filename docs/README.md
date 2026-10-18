@@ -77,7 +77,7 @@ the next version.
 | [V0.7.5](versions/v0.7.5.md) | Activity reports | Frozen · tag `v0.7.5` |
 | [V0.7.6](versions/v0.7.6.md) | LLM-aware replan | Frozen · tag `v0.7.6` |
 | [V0.8.0](versions/v0.8.0.md) | Self-observation | Frozen · tag `v0.8.0` |
-| [V0.8.1](versions/v0.8.1.md) | Verification recovery | In progress · `v0.8.1-integration` |
+| [V0.8.1](versions/v0.8.1.md) | Verification recovery | Frozen · tag `v0.8.1` |
 
 ## Working Rules
 

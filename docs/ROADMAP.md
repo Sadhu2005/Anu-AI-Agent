@@ -102,8 +102,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.1 (structured recovery from verification) is in progress on
-`v0.8.1-integration`. V0.8.0 remains frozen (tag `v0.8.0`).
+V0.8.1 is frozen (tag `v0.8.1`): verification → retry/wait/block/escalate.
+Next: further V0.8 capability slices (VISION).
 
 ## Model gateway (V0.7.1 frozen)
 

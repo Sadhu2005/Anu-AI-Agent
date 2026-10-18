@@ -3,6 +3,16 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.3] — 2026-10-18 · branch `v0.8.3-integration`
+
+Project awareness dossier (scan + memory + open goal/task counts).
+
+- `anu-project-intelligence-v0.1.py`: `build_project_dossier` / CLI `dossier`
+- Activity report `project --project-key`; goal reports attach dossier
+- LLM prompt carries `project_memory_hints` / `open_goals`
+- Pack: `run_v0_8_3_regression.py`
+- Pi smoke pending before freeze tag `v0.8.3`
+
 ## [V0.8.2] — 2026-10-18 · tag `v0.8.2`
 
 Richer multi-step planning graphs (research → design → implement → test → verify).

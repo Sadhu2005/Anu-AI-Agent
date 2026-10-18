@@ -62,6 +62,33 @@ def _load_aggregator():
     )
 
 
+def _load_project_intelligence():
+    try:
+        return _load_module(
+            _module_path("anu-project-intelligence-v0.1.py"),
+            "anu_project_intelligence_v083_report",
+        )
+    except Exception:
+        return None
+
+
+def _dossier_best_effort(db, project_key):
+    """V0.8.3: attach project dossier when intelligence is available."""
+    if not isinstance(project_key, str) or not project_key.strip():
+        return None
+    pi = _load_project_intelligence()
+    if pi is None:
+        return None
+    try:
+        if hasattr(pi, "migrate"):
+            pi.migrate(db)
+        return pi.build_project_dossier(
+            db, project_key.strip(), refresh=False
+        )
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def _require_db(db):
     if db is None or not hasattr(db, "execute"):
         raise TypeError("db must provide an execute() method")
@@ -271,6 +298,7 @@ def report_goal(db, goal_id, *, event_limit=DEFAULT_EVENT_LIMIT):
 
     tasks = _list_goal_tasks(db, goal_id)
     events = _list_goal_events(db, goal_id, limit=event_limit)
+    project_dossier = _dossier_best_effort(db, project_key)
 
     return {
         "ok": True,
@@ -286,6 +314,53 @@ def report_goal(db, goal_id, *, event_limit=DEFAULT_EVENT_LIMIT):
         "tasks": tasks,
         "events": events,
         "summary": _summary_from_tasks(tasks, events),
+        "project_dossier": project_dossier,
+    }
+
+
+def report_project(db, project_key, *, event_limit=DEFAULT_EVENT_LIMIT):
+    """V0.8.3: project-level activity snapshot via dossier + recent goals."""
+    db = _require_db(db)
+    if not isinstance(project_key, str) or not project_key.strip():
+        return {"ok": False, "error": "project_key must be a non-empty string"}
+    project_key = project_key.strip()
+    dossier = _dossier_best_effort(db, project_key)
+    if dossier is None:
+        return {
+            "ok": False,
+            "error": "project intelligence unavailable",
+            "project_key": project_key,
+        }
+    if isinstance(dossier, dict) and dossier.get("ok") is False:
+        return {
+            "ok": False,
+            "error": dossier.get("error") or "dossier failed",
+            "project_key": project_key,
+        }
+
+    recent = []
+    for gid in list(dossier.get("recent_goal_ids") or [])[:5]:
+        try:
+            recent.append(report_goal(db, gid, event_limit=event_limit))
+        except Exception as exc:
+            recent.append({
+                "ok": False,
+                "goal_id": gid,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+
+    return {
+        "ok": True,
+        "project_key": project_key,
+        "dossier": dossier,
+        "recent_goals": recent,
+        "summary": {
+            "open_goals": dossier.get("open_goals"),
+            "open_tasks": dossier.get("open_tasks"),
+            "verification_hint_count": dossier.get("verification_hint_count"),
+            "memory_repeated_failure": dossier.get("memory_repeated_failure"),
+            "recent_goal_count": len(recent),
+        },
     }
 
 
@@ -330,6 +405,12 @@ def main(argv=None):
     recent_p = sub.add_parser("recent", help="Report newest goals")
     recent_p.add_argument("--limit", type=int, default=5)
 
+    project_p = sub.add_parser(
+        "project",
+        help="Project dossier + recent linked goals (V0.8.3)",
+    )
+    project_p.add_argument("--project-key", required=True)
+
     args = parser.parse_args(argv)
     db = db_connect(args.db)
     try:
@@ -345,6 +426,14 @@ def main(argv=None):
             result = report_recent(
                 db,
                 limit=args.limit,
+                event_limit=args.event_limit,
+            )
+            print(json.dumps(result, indent=2, default=str))
+            return 0 if result.get("ok") else 1
+        if args.cmd == "project":
+            result = report_project(
+                db,
+                args.project_key,
                 event_limit=args.event_limit,
             )
             print(json.dumps(result, indent=2, default=str))

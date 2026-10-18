@@ -343,14 +343,25 @@ def _build_user_prompt(goal, project_key, project_ctx, memory):
     goal_desc = ""
     if isinstance(goal, dict):
         goal_desc = str(goal.get("description") or "")
+    ctx_memory_hints = list((project_ctx or {}).get("memory_hints") or [])[:5]
+    pack_hints = list((memory or {}).get("hints") or [])[:5]
     payload = {
         "goal_description": goal_desc[:1000],
         "project_key": project_key,
         "file_count": (project_ctx or {}).get("file_count"),
         "has_tests": (project_ctx or {}).get("has_tests"),
         "known_problem_count": (project_ctx or {}).get("known_problem_count"),
-        "memory_hints": list((memory or {}).get("hints") or [])[:5],
-        "repeated_failure": bool((memory or {}).get("repeated_failure")),
+        "memory_hints": pack_hints,
+        "project_memory_hints": ctx_memory_hints,
+        "open_goals": (project_ctx or {}).get("open_goals"),
+        "open_tasks": (project_ctx or {}).get("open_tasks"),
+        "verification_hint_count": (project_ctx or {}).get(
+            "verification_hint_count"
+        ),
+        "repeated_failure": bool(
+            (memory or {}).get("repeated_failure")
+            or (project_ctx or {}).get("memory_repeated_failure")
+        ),
     }
     return (
         "Propose a linear plan for this ANU goal. "

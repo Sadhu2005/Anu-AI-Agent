@@ -74,6 +74,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.8.0](versions/v0.8.0.md) | Self-observation | Verification → memory → planning hints | V0.7.6 |
 | [V0.8.1](versions/v0.8.1.md) | Verification recovery | RETRY/ROLLBACK → retry/wait/block/escalate | V0.8.0 |
 | [V0.8.2](versions/v0.8.2.md) | Richer planning | `multi_stage_goal` default expand graph | V0.8.1 |
+| [V0.8.3](versions/v0.8.3.md) | Project awareness | Project dossier for plan + reports | V0.8.2 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -103,8 +104,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.2 is frozen (tag `v0.8.2`): default `multi_stage_goal` expand graph.
-Next: further V0.8 capability slices (VISION).
+V0.8.3 (project awareness dossier) is in progress on
+`v0.8.3-integration`. V0.8.2 remains frozen (tag `v0.8.2`).
 
 ## Model gateway (V0.7.1 frozen)
 

@@ -475,8 +475,95 @@ def get_model(db, project_key):
     return model
 
 
-def planner_project_context(db, project_key, *, refresh=True, workspace_root=None):
-    """Context block for template expand / planning."""
+OPEN_GOAL_STATUSES = frozenset({"pending", "active"})
+OPEN_TASK_STATUSES = frozenset({
+    "pending",
+    "ready",
+    "planning",
+    "running",
+    "verifying",
+    "failed",
+})
+
+
+def _memory_pack_best_effort(db, project_key, *, limit=10):
+    """V0.8.3: retrieve_for_planning without failing the dossier."""
+    empty = {
+        "hints": [],
+        "repeated_failure": False,
+        "failure_classes": [],
+        "memories": [],
+    }
+    try:
+        mem = _load(
+            "anu-observation-memory-v0.1.py",
+            "anu_obs_mem_dossier",
+        )
+        if hasattr(mem, "migrate"):
+            mem.migrate(db)
+        pack = mem.retrieve_for_planning(
+            db, project_key=project_key, limit=limit
+        )
+        if not isinstance(pack, dict):
+            return empty
+        return {
+            "hints": list(pack.get("hints") or []),
+            "repeated_failure": bool(pack.get("repeated_failure")),
+            "failure_classes": list(pack.get("failure_classes") or []),
+            "memories": list(pack.get("memories") or []),
+        }
+    except Exception:
+        return empty
+
+
+def _open_counts_for_project(db, project_id):
+    """Count open goals/tasks and recent goal ids for a Brain project row."""
+    if project_id is None:
+        return {"open_goals": 0, "open_tasks": 0, "recent_goal_ids": []}
+    goal_rows = db.execute(
+        """
+        SELECT id, status FROM goals
+        WHERE project_id = ?
+        ORDER BY id DESC
+        """,
+        (project_id,),
+    ).fetchall()
+    recent_goal_ids = []
+    open_goals = 0
+    for row in goal_rows:
+        gid = row[0] if not isinstance(row, sqlite3.Row) else row["id"]
+        status = row[1] if not isinstance(row, sqlite3.Row) else row["status"]
+        if len(recent_goal_ids) < 5:
+            recent_goal_ids.append(int(gid))
+        if status in OPEN_GOAL_STATUSES:
+            open_goals += 1
+    placeholders = ",".join("?" for _ in OPEN_TASK_STATUSES) or "NULL"
+    open_tasks = db.execute(
+        f"""
+        SELECT COUNT(*) FROM tasks t
+        JOIN goals g ON g.id = t.goal_id
+        WHERE g.project_id = ?
+          AND t.status IN ({placeholders})
+        """,
+        (project_id, *sorted(OPEN_TASK_STATUSES)),
+    ).fetchone()[0]
+    return {
+        "open_goals": int(open_goals),
+        "open_tasks": int(open_tasks),
+        "recent_goal_ids": recent_goal_ids,
+    }
+
+
+def build_project_dossier(
+    db,
+    project_key,
+    *,
+    refresh=True,
+    workspace_root=None,
+    memory_limit=10,
+):
+    """V0.8.3: scan model + memory hints + open goal/task counts."""
+    db = _require_db(db)
     key = require_registered(project_key)
     if refresh:
         model = refresh_model(db, key, workspace_root=workspace_root)
@@ -485,6 +572,22 @@ def planner_project_context(db, project_key, *, refresh=True, workspace_root=Non
             db, key, workspace_root=workspace_root
         )
     problems = (model.get("known_problems") or {}).get("items") or []
+    model_hints = [
+        p.get("summary")
+        for p in problems
+        if isinstance(p, dict) and p.get("summary")
+    ]
+    # Prefer live memory pack; fall back to scan-embedded hints.
+    mem = _memory_pack_best_effort(db, key, limit=memory_limit)
+    memory_hints = mem["hints"] or list(
+        (model.get("known_problems") or {}).get("hints") or []
+    )
+    verification_hint_count = sum(
+        1 for h in memory_hints if isinstance(h, str) and "verification" in h
+    )
+    row = get_project(db, key)
+    project_id = None if row is None else row["id"]
+    counts = _open_counts_for_project(db, project_id)
     return {
         "project_key": key,
         "registered": True,
@@ -493,11 +596,31 @@ def planner_project_context(db, project_key, *, refresh=True, workspace_root=Non
         "has_tests": (model.get("files") or {}).get("has_tests"),
         "known_problem_count": len(problems),
         "repeated_failure": bool(
-            (model.get("known_problems") or {}).get("repeated_failure")
+            mem["repeated_failure"]
+            or (model.get("known_problems") or {}).get("repeated_failure")
         ),
         "top_level": (model.get("files") or {}).get("top_level") or [],
-        "hints": (model.get("known_problems") or {}).get("hints") or [],
+        # Backward-compatible alias used by older planners.
+        "hints": memory_hints,
+        "model_hints": model_hints,
+        "memory_hints": memory_hints,
+        "memory_repeated_failure": bool(mem["repeated_failure"]),
+        "memory_failure_classes": list(mem["failure_classes"]),
+        "verification_hint_count": int(verification_hint_count),
+        "open_goals": counts["open_goals"],
+        "open_tasks": counts["open_tasks"],
+        "recent_goal_ids": counts["recent_goal_ids"],
     }
+
+
+def planner_project_context(db, project_key, *, refresh=True, workspace_root=None):
+    """Context block for template expand / planning (dossier-backed)."""
+    return build_project_dossier(
+        db,
+        project_key,
+        refresh=refresh,
+        workspace_root=workspace_root,
+    )
 
 
 def main(argv=None):
@@ -516,6 +639,13 @@ def main(argv=None):
     scan_p.add_argument("--refresh", action="store_true")
     get_p = sub.add_parser("get-model")
     get_p.add_argument("--project", required=True)
+    dossier_p = sub.add_parser("dossier")
+    dossier_p.add_argument("--project", required=True)
+    dossier_p.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Use stored model when present (still scans if missing)",
+    )
 
     args = parser.parse_args(argv)
     config = load_projects_config(args.config)
@@ -561,6 +691,14 @@ def main(argv=None):
                 print(json.dumps({"ok": False, "error": "no_model"}))
                 return 1
             print(json.dumps({"ok": True, "model": model}, indent=2))
+            return 0
+        if args.cmd == "dossier":
+            dossier = build_project_dossier(
+                db,
+                args.project,
+                refresh=not args.no_refresh,
+            )
+            print(json.dumps({"ok": True, "dossier": dossier}, indent=2))
             return 0
         parser.error(f"unknown command: {args.cmd}")
         return 2

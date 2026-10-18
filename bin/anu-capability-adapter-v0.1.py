@@ -75,6 +75,76 @@ def _load_db_helper():
     return mod
 
 
+def _load_observation_memory():
+    try:
+        path = _module_path("anu-observation-memory-v0.1.py")
+    except FileNotFoundError:
+        return None
+    spec = importlib.util.spec_from_file_location(
+        "anu_observation_memory_v0_1_adapter",
+        path,
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _record_observation_best_effort(
+    db,
+    *,
+    project_name,
+    operation,
+    capability_name,
+    run_payload,
+    task_id=None,
+    goal_id=None,
+):
+    """V0.6.3: persist capability outcome as observation + memory."""
+    mem = _load_observation_memory()
+    if mem is None or db is None:
+        return None
+    try:
+        mem.migrate(db)
+        admitted = bool(run_payload.get("admitted", True))
+        decision = (run_payload.get("capability") or {}).get("decision") or {}
+        gateway_result = run_payload.get("result")
+        if gateway_result is None:
+            gateway_result = (run_payload.get("capability") or {}).get(
+                "gateway_result"
+            )
+        denied = not admitted
+        ok = (
+            bool(run_payload.get("process_exit_code") == 0)
+            and bool((gateway_result or {}).get("ok"))
+            and not denied
+        )
+        effective_task = task_id
+        if effective_task is None:
+            effective_task = (decision.get("arguments") or {}).get("task_id")
+        return mem.record_capability_result(
+            db,
+            project_key=project_name,
+            capability=capability_name or operation,
+            ok=ok,
+            denied=denied,
+            denial_class=decision.get("denial_class")
+            or (run_payload.get("result") or {}).get("denial_class"),
+            task_id=effective_task,
+            goal_id=goal_id,
+            exit_code=(gateway_result or {}).get("exit_code")
+            if isinstance(gateway_result, dict)
+            else None,
+            error=(run_payload.get("result") or {}).get("error")
+            or decision.get("reason"),
+            detail={
+                "operation": operation,
+                "gateway_exit_code": run_payload.get("process_exit_code"),
+            },
+        )
+    except Exception:
+        return None
+
+
 def capability_name_for_operation(operation):
     if not isinstance(operation, str) or not operation.strip():
         raise ValueError("operation must be a non-empty string")
@@ -142,7 +212,7 @@ def run_capability(
 
         if not payload.get("admitted"):
             reason = (payload.get("decision") or {}).get("reason") or "capability denied"
-            return {
+            run = {
                 "process_exit_code": 1,
                 "result": {
                     "ok": False,
@@ -157,13 +227,25 @@ def run_capability(
                 "admitted": False,
                 "capability": payload,
             }
+            obs = _record_observation_best_effort(
+                db,
+                project_name=project_name.strip(),
+                operation=operation,
+                capability_name=name,
+                run_payload=run,
+                task_id=task_id,
+                goal_id=goal_id,
+            )
+            if obs is not None:
+                run["observation"] = obs
+            return run
 
         gateway_result = payload.get("gateway_result")
         exit_code = payload.get("gateway_exit_code")
         if exit_code is None:
             exit_code = 0 if payload.get("ok") else 1
 
-        return {
+        run = {
             "process_exit_code": int(exit_code),
             "result": gateway_result,
             "stdout": (payload.get("stdout") or "")[-20000:],
@@ -171,6 +253,18 @@ def run_capability(
             "admitted": True,
             "capability": payload,
         }
+        obs = _record_observation_best_effort(
+            db,
+            project_name=project_name.strip(),
+            operation=operation,
+            capability_name=name,
+            run_payload=run,
+            task_id=task_id,
+            goal_id=goal_id,
+        )
+        if obs is not None:
+            run["observation"] = obs
+        return run
     finally:
         if (own_db or close_db) and db is not None:
             try:

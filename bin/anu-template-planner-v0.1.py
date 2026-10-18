@@ -213,6 +213,30 @@ def _create_task_row(
     return cur.lastrowid
 
 
+def _load_observation_memory():
+    return _load_module(
+        _module_path("anu-observation-memory-v0.1.py"),
+        "anu_observation_memory_v0_1_planner",
+    )
+
+
+def _memory_hints_for_project(db, project):
+    """Best-effort V0.6.3 retrieval; never fails planning."""
+    try:
+        mem = _load_observation_memory()
+        if hasattr(mem, "migrate"):
+            mem.migrate(db)
+        return mem.retrieve_for_planning(db, project_key=project, limit=5)
+    except Exception:
+        return {
+            "project_key": project,
+            "memories": [],
+            "repeated_failure": False,
+            "failure_classes": [],
+            "hints": [],
+        }
+
+
 def expand_goal(
     db,
     goal_id,
@@ -249,7 +273,28 @@ def expand_goal(
     if goal is None:
         raise ValueError(f"goal does not exist: goal_id={goal_id}")
 
+    memory = _memory_hints_for_project(db, project)
     plan_dict = build_plan_dict(goal_id, template_name, plan_id=plan_id)
+
+    # V0.6.3: repeated failures from memory change the planned parameters.
+    if memory.get("hints"):
+        for action in plan_dict["actions"]:
+            action["parameters"]["memory_hints"] = list(memory["hints"])
+            action["parameters"]["memory_repeated_failure"] = bool(
+                memory.get("repeated_failure")
+            )
+            if memory.get("failure_classes"):
+                action["parameters"]["memory_failure_classes"] = list(
+                    memory["failure_classes"]
+                )
+        if memory.get("repeated_failure") and plan_dict["actions"]:
+            first = plan_dict["actions"][0]
+            first["description"] = (
+                f"{first['description']} "
+                f"[memory: repeated failure "
+                f"{','.join(memory.get('failure_classes') or ['unknown'])}]"
+            )
+
     plan_record = plans.save_plan(db, goal_id, plan_dict, status="active")
 
     created = []
@@ -305,6 +350,7 @@ def expand_goal(
         "changes_file": changes_file,
         "plan": plan_record,
         "tasks": created,
+        "memory": memory,
     }
 
 

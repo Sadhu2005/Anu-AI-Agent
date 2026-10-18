@@ -3,6 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.6.3] — in progress · branch `v0.6.3-integration`
+
+Memory / observation: capability outcomes become durable, retrievable memory.
+
+- `observations` capture + additive `agent_memories` (provenance, TTL, prune)
+- Capability adapter records results; template expand uses retrieval hints
+- Portable regression: capture, expiry, repeated-failure plan change
+
 ## [V0.6.2] — 2026-10-18 · tag `v0.6.2`
 
 Capabilities: policy-checked, audited invoke through the registry and gateway.

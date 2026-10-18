@@ -36,8 +36,9 @@ V0.5.9       ████████████████████  100%
 V0.6.0       ████████████████████  100%
 V0.6.1       ████████████████████  100%
 V0.6.1b      ████████████████████  100% (with V0.6.2)
-V0.6.2       ████████████████████  100% (adapter follow-up deferred)
-V0.6.3–.9    ░░░░░░░░░░░░░░░░░░░░  0%
+V0.6.2       ████████████████████  100%
+V0.6.3       ██████████░░░░░░░░░░  ~50% (observation/memory step 1)
+V0.6.4–.9    ░░░░░░░░░░░░░░░░░░░░  0%
 V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
 ```
 
@@ -87,11 +88,9 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.6.3](versions/v0.6.3.md) memory / observation.
-
-V0.6.2 is frozen (tag `v0.6.2`); post-freeze **capability adapter** routes
-Safe Mutation ops through the registry
-([versions/v0.6.2.md](versions/v0.6.2.md)).
+[V0.6.3](versions/v0.6.3.md) memory / observation — step 1 landed on
+`v0.6.3-integration` (capture, `agent_memories`, planner hints). Next: Pi
+regression / live evidence, then freeze.
 
 ## Model gateway (separate release)
 

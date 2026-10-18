@@ -3,6 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.7.4] — in progress · branch `v0.7.4-integration`
+
+LLM planner prompt harden + one retry; gateway `tool_choice` pass-through.
+
+- Stronger no-tools system prompt; retry on tool-echo / empty plan
+- No retry on disallowed operations
+- Pack: `run_v0_7_4_regression.py`
+
 ## [V0.7.3] — 2026-10-18 · tag `v0.7.3`
 
 LLM planner unwrap for LM Studio tool-call envelopes.

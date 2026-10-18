@@ -193,6 +193,7 @@ def request_chat(
     temperature: float | None = None,
     privacy_class: str | None = None,
     api_key: str | None = None,
+    tool_choice: str | None = None,
 ) -> dict[str, Any]:
     """POST /v1/chat/completions. Returns provider JSON + ANU metadata."""
     if not cfg.get("enabled", True):
@@ -220,6 +221,9 @@ def request_chat(
             temperature if temperature is not None else cfg.get("temperature", 0.2)
         ),
     }
+    # OpenAI-compatible: discourage tool/function calls when planning.
+    if isinstance(tool_choice, str) and tool_choice.strip():
+        body["tool_choice"] = tool_choice.strip()
     data = json.dumps(body).encode("utf-8")
     url = _chat_url(cfg["base_url"])
     headers = {
@@ -436,11 +440,13 @@ def handle_socket_request(cfg: dict, request: dict) -> dict:
         if isinstance(system, str) and system.strip():
             messages.append({"role": "system", "content": system.strip()})
         messages.append({"role": "user", "content": prompt.strip()})
+        tool_choice = request.get("tool_choice")
         result = request_chat(
             cfg,
             messages=messages,
             model=request.get("model"),
             privacy_class=request.get("privacy_class"),
+            tool_choice=tool_choice if isinstance(tool_choice, str) else None,
         )
         return {
             "ok": True,

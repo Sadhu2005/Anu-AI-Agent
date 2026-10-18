@@ -68,6 +68,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.7.1](versions/v0.7.1.md) | Model gateway | OpenAI-compatible LLM via gateway; LM Studio / cloud by config | V0.7.0 |
 | [V0.7.2](versions/v0.7.2.md) | Optional LLM planner | Gateway plan proposal + template fallback | V0.7.1 |
 | [V0.7.3](versions/v0.7.3.md) | LLM tool-call unwrap | Accept LM Studio envelopes for `source=llm` | V0.7.2 |
+| [V0.7.4](versions/v0.7.4.md) | Planner prompt + retry | `tool_choice=none` + one retry for live `source=llm` | V0.7.3 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -97,8 +98,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.7.3 is frozen (tag `v0.7.3`): tool-call unwrap + safe template fallback.
-Next: stronger no-tools prompt for live `source=llm`, or next roadmap slice.
+[V0.7.4](versions/v0.7.4.md) planner prompt harden + retry on
+`v0.7.4-integration`. V0.7.3 is frozen (tag `v0.7.3`).
 
 ## Model gateway (V0.7.1 frozen)
 

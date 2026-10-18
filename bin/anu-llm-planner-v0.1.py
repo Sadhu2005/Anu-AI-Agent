@@ -29,11 +29,30 @@ DEFAULT_FALLBACK_TEMPLATE = "improve_sandbox"
 DEFAULT_MAX_STEPS = 8
 
 SYSTEM_PROMPT = (
-    "You are ANU's planning assistant. Reply with JSON only, no markdown. "
+    "You are ANU's planning assistant. "
+    "Do NOT call tools or functions. Do NOT echo the user fields. "
+    "Reply with ONE JSON object only (no markdown, no prose). "
     "Schema: {\"steps\":[{\"role\":\"short_id\",\"description\":\"one line\","
     "\"operation\":\"python_test\"|\"python_compile\"}]}. "
-    "1–8 steps. Only those two operations. No shell, paths, or commands."
+    "1-8 steps. Only those two operations. No shell, paths, or commands."
 )
+
+RETRY_SYSTEM_PROMPT = (
+    "IMPORTANT: Your previous reply was invalid. "
+    "Output ONLY this JSON shape, nothing else, no tool calls: "
+    "{\"steps\":[{\"role\":\"inspect\",\"description\":\"inspect project\","
+    "\"operation\":\"python_test\"}]}. "
+    "Use 1-8 real steps for the goal. Operations: python_test or python_compile only."
+)
+
+# Reasons that warrant a single stricter retry (tool-echo / empty plan).
+_RETRYABLE_REASONS = frozenset({
+    "steps_not_list",
+    "empty_steps",
+    "empty_text",
+    "json_parse_failed",
+    "root_not_object",
+})
 
 # Tests may inject a fake gateway caller: _gateway_call(op, **fields) -> dict
 _gateway_call = None
@@ -338,6 +357,56 @@ def _build_user_prompt(goal, project_key, project_ctx, memory):
     )
 
 
+def _steps_from_chat_text(text, *, max_steps=DEFAULT_MAX_STEPS):
+    """Parse/coerce/validate assistant text into steps. Returns propose-style dict."""
+    if not isinstance(text, str) or not text.strip():
+        return {
+            "ok": False,
+            "source": "none",
+            "steps": None,
+            "reason": "empty_text",
+        }
+    parsed = _extract_json_object(text)
+    if parsed is None:
+        return {
+            "ok": False,
+            "source": "none",
+            "steps": None,
+            "reason": "json_parse_failed",
+        }
+    parsed = coerce_plan_object(parsed)
+    ok, steps, reason = validate_steps(parsed, max_steps=max_steps)
+    if not ok:
+        return {
+            "ok": False,
+            "source": "none",
+            "steps": None,
+            "reason": reason,
+        }
+    return {
+        "ok": True,
+        "source": "llm",
+        "steps": steps,
+        "reason": "ok",
+    }
+
+
+def _chat_once(
+    prompt: str,
+    *,
+    system: str,
+    timeout_seconds: float,
+    tool_choice: str | None = "none",
+):
+    fields = {
+        "prompt": prompt,
+        "system": system,
+    }
+    if tool_choice:
+        fields["tool_choice"] = tool_choice
+    return call_gateway("chat", timeout=float(timeout_seconds), **fields)
+
+
 def propose_steps(
     goal,
     project_ctx,
@@ -347,7 +416,11 @@ def propose_steps(
     max_steps=DEFAULT_MAX_STEPS,
     timeout_seconds=60,
 ):
-    """Ask the gateway for steps. Never raises for provider failures."""
+    """Ask the gateway for steps. Never raises for provider failures.
+
+    V0.7.4: one retry with a stricter system prompt when the first reply is
+    empty / unparseable / a tool-echo without steps. Requests ``tool_choice=none``.
+    """
     try:
         health = call_gateway("health", timeout=min(30.0, float(timeout_seconds)))
     except Exception as exc:
@@ -367,12 +440,13 @@ def propose_steps(
 
     key = project_key or (project_ctx or {}).get("project_key") or "unknown"
     prompt = _build_user_prompt(goal, key, project_ctx, memory)
+
     try:
-        chat = call_gateway(
-            "chat",
-            timeout=float(timeout_seconds),
-            prompt=prompt,
+        chat = _chat_once(
+            prompt,
             system=SYSTEM_PROMPT,
+            timeout_seconds=timeout_seconds,
+            tool_choice="none",
         )
     except Exception as exc:
         return {
@@ -389,38 +463,55 @@ def propose_steps(
             "reason": f"chat_not_ok:{chat!r}"[:200],
         }
 
-    text = chat.get("text")
-    if not isinstance(text, str) or not text.strip():
+    first = _steps_from_chat_text(chat.get("text"), max_steps=max_steps)
+    if first.get("ok"):
+        return first
+
+    first_reason = str(first.get("reason") or "")
+    retryable = first_reason in _RETRYABLE_REASONS or first_reason.startswith(
+        "step_"
+    )
+    # Do not retry hard validation failures like bad_operation — those are final.
+    if first_reason.startswith("step_") and "bad_operation" in first_reason:
+        retryable = False
+    if not retryable:
+        return first
+
+    try:
+        chat2 = _chat_once(
+            prompt + "\n\nReminder: return {\"steps\":[...]} JSON only.",
+            system=RETRY_SYSTEM_PROMPT,
+            timeout_seconds=timeout_seconds,
+            tool_choice="none",
+        )
+    except Exception as exc:
         return {
             "ok": False,
             "source": "none",
             "steps": None,
-            "reason": "empty_text",
+            "reason": (
+                f"retry_chat_error:{type(exc).__name__}:{exc}"
+                f"|first:{first_reason}"
+            ),
+        }
+    if not isinstance(chat2, dict) or not chat2.get("ok"):
+        return {
+            "ok": False,
+            "source": "none",
+            "steps": None,
+            "reason": f"retry_chat_not_ok|first:{first_reason}",
         }
 
-    parsed = _extract_json_object(text)
-    if parsed is None:
-        return {
-            "ok": False,
-            "source": "none",
-            "steps": None,
-            "reason": "json_parse_failed",
-        }
-
-    parsed = coerce_plan_object(parsed)
-    ok, steps, reason = validate_steps(parsed, max_steps=max_steps)
-    if not ok:
-        return {
-            "ok": False,
-            "source": "none",
-            "steps": None,
-            "reason": reason,
-        }
+    second = _steps_from_chat_text(chat2.get("text"), max_steps=max_steps)
+    if second.get("ok"):
+        second = dict(second)
+        second["reason"] = "ok_retry"
+        return second
     return {
-        "ok": True,
-        "source": "llm",
-        "steps": steps,
-        "reason": "ok",
+        "ok": False,
+        "source": "none",
+        "steps": None,
+        "reason": f"{second.get('reason')}|first:{first_reason}",
     }
 
 

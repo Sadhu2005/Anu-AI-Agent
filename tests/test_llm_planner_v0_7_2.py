@@ -170,10 +170,12 @@ def test_propose_valid_json_returns_llm():
 
 def test_propose_bad_json_falls_through():
     p = load_planner()
+    chats = []
 
     def fake(op, **fields):
         if op == "health":
             return {"ok": True}
+        chats.append(1)
         return {"ok": True, "text": "not json at all {"}
 
     p._gateway_call = fake
@@ -184,7 +186,9 @@ def test_propose_bad_json_falls_through():
         project_key="sandbox-test-project",
     )
     assert out["ok"] is False
-    assert out["reason"] == "json_parse_failed"
+    # V0.7.4: one retry, so reason may include first:json_parse_failed
+    assert "json_parse_failed" in out["reason"]
+    assert len(chats) == 2
     print("PASS propose_steps bad JSON -> not ok")
 
 

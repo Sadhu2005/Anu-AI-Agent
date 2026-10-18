@@ -228,6 +228,9 @@ back to `improve_sandbox`. `template_only` never calls the gateway.
 V0.7.3: the planner also unwraps common tool-call envelopes (e.g. LM Studio
 `{"name":"create_plan","parameters":{"plan":"..."}}`) before validation.
 
+V0.7.4: chat requests may include `tool_choice: none`; the planner retries once
+with a stricter prompt when the first reply has no valid `steps`.
+
 ## 7. Safety rules (unchanged)
 
 - Model output is **data**, not authority. Plans still go through policy,

@@ -64,11 +64,11 @@ the next version.
 | [V0.6.8](versions/v0.6.8.md) | Long-running agent | Frozen | tag `v0.6.8` |
 | [V0.6.9](versions/v0.6.9.md) | Pre-7.0 hardening | Frozen | tag `v0.6.9` |
 
-### Planned
+### In progress
 
-| Version | Title |
-|---|---|
-| [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime |
+| Version | Title | Status |
+|---|---|---|
+| [V0.7.0](versions/v0.7.0.md) | Real ANU agent runtime | Step 1 (goal spine) |
 
 ## Working Rules
 

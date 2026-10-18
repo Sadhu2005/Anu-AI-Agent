@@ -28,11 +28,11 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.6.9 frozen (tag `v0.6.9`); branch **`v0.6.9-integration`** |
-| **Proven** | V0.5.9–V0.6.8 as before; V0.6.9 G1–G3 + BOUNDARY_CHECK on Pi |
-| **Maturity** | V0.6.8 **100%** · V0.6.9 **100%** · **feature freeze** |
-| **Next** | V0.7.0 real ANU agent runtime |
-| **Then** | Goal → plan → execute → verify → remember as one system |
+| **Version** | V0.7.0 in progress; branch **`v0.7.0-integration`** (V0.6.9 frozen) |
+| **Proven** | V0.5.9–V0.6.9 as before; V0.7.0 goal spine wired into runtime |
+| **Maturity** | V0.6.9 **100%** · V0.7.0 **~40%** (Pi E2E evidence pending) |
+| **Next** | Pi: goal expand/sync live, approval/reboot/resource proofs, freeze |
+| **Then** | Goal → plan → execute → verify → remember proven end-to-end |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
 

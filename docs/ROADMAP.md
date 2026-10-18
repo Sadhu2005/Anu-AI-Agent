@@ -44,7 +44,7 @@ V0.6.6       ████████████████████  100%
 V0.6.7       ████████████████████  100%
 V0.6.8       ████████████████████  100%
 V0.6.9       ████████████████████  100%
-V0.7.0       ░░░░░░░░░░░░░░░░░░░░  0%
+V0.7.0       ████████░░░░░░░░░░░░   40%  (goal spine in runtime)
 ```
 
 
@@ -93,11 +93,11 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-[V0.7.0](versions/v0.7.0.md) real ANU agent runtime.
+Finish [V0.7.0](versions/v0.7.0.md) on Pi: deploy goal-cycle runtime, prove
+safe goal E2E, approval resume, reboot recovery, resource defer, then freeze.
 
-V0.6.9 is frozen (tag `v0.6.9`): G1–G3 closed with Pi negative evidence,
-`BOUNDARY_CHECK` ok, feature freeze before V0.7.0
-([versions/v0.6.9.md](versions/v0.6.9.md)).
+V0.6.9 is frozen (tag `v0.6.9`). V0.7.0 step 1 is on `v0.7.0-integration`:
+goal expand + sync + mid-loop wake re-eval wired into `anu-runtime.py`.
 
 ## Model gateway (separate release)
 

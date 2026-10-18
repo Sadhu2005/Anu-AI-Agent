@@ -3,6 +3,15 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.7.0] — in progress · branch `v0.7.0-integration`
+
+Real ANU agent runtime (integration of V0.6.x).
+
+- Goal cycle glue: `anu-goal-cycle-v0.1.py` (expand pending + sync statuses)
+- Runtime: wake re-eval → expand → schedule → goal sync each tick
+- Portable regression + full chain V0.6.1→V0.7.0
+- Pi live E2E evidence pending
+
 ## [V0.6.9] — 2026-10-18 · tag `v0.6.9`
 
 Pre-7.0 hardening (security release) · **feature freeze** before V0.7.0.

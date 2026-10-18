@@ -18,9 +18,11 @@ SCHEDULER = BASE / "bin" / "anu-task-scheduler-v0.1.py"
 RECOVERY = BASE / "bin" / "anu-recovery-v0.1.py"
 STARTUP = BASE / "bin" / "anu-startup-recovery-v0.1.py"
 BOUNDARY = BASE / "bin" / "anu-boundary-check-v0.1.py"
+GOAL_CYCLE = BASE / "bin" / "anu-goal-cycle-v0.1.py"
 DB_FILE = BASE / "brain" / "anu-brain.db"
 SCHEDULER_LOCK_FILE = BASE / "runtime" / "anu-scheduler.lock"
 EXECUTION_LOCK_FILE = BASE / "runtime" / "anu-execution.lock"
+GOAL_EXPAND_MAX = 1
 
 LOG_FILE = BASE / "logs" / "anu.log"
 STATE_FILE = BASE / "runtime" / "anu-state.json"
@@ -270,6 +272,114 @@ def run_boundary_self_check():
     return result
 
 
+def _load_goal_cycle():
+    for candidate in (
+        GOAL_CYCLE,
+        _HERE / "anu-goal-cycle-v0.1.py",
+    ):
+        if not candidate.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location(
+            "anu_goal_cycle_v0_1_runtime",
+            candidate,
+        )
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if hasattr(module, "BASE"):
+            module.BASE = BASE
+        return module
+    return None
+
+
+def _open_brain_db():
+    import sqlite3
+
+    db = sqlite3.connect(str(DB_FILE))
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys = ON")
+    return db
+
+
+def run_wake_reevaluation():
+    """V0.7.0: satisfy due wakes mid-loop (not only at startup)."""
+    startup = _load_startup()
+    if startup is None or not hasattr(startup, "evaluate_wake_conditions"):
+        return {"skipped": True, "reason": "startup_module_missing"}
+
+    try:
+        db = _open_brain_db()
+        try:
+            result = startup.evaluate_wake_conditions(db)
+            satisfied = result.get("satisfied") if isinstance(result, dict) else None
+            count = len(satisfied) if isinstance(satisfied, list) else result
+            write_log(f"Wake re-eval: satisfied={count}")
+            return result
+        finally:
+            db.close()
+    except Exception as exc:
+        write_log(
+            f"Wake re-eval failed: {type(exc).__name__}: {exc}"
+        )
+        return {"ok": False, "error": str(exc)}
+
+
+def run_goal_expand():
+    """V0.7.0: pending goals → template plan + task graph (before schedule)."""
+    cycle = _load_goal_cycle()
+    if cycle is None:
+        write_log("Goal expand skipped: module missing")
+        return {"skipped": True, "reason": "goal_cycle_missing"}
+
+    try:
+        db = _open_brain_db()
+        try:
+            result = cycle.expand_pending_goals(
+                db,
+                max_goals=GOAL_EXPAND_MAX,
+            )
+            write_log(
+                "Goal expand: "
+                f"expanded={result.get('expanded_count', 0)} "
+                f"skipped={result.get('skipped_count', 0)}"
+            )
+            return result
+        finally:
+            db.close()
+    except Exception as exc:
+        write_log(
+            f"Goal expand failed: {type(exc).__name__}: {exc}"
+        )
+        return {"ok": False, "error": str(exc)}
+
+
+def run_goal_sync():
+    """V0.7.0: derive goal status from task graph after schedule."""
+    cycle = _load_goal_cycle()
+    if cycle is None:
+        write_log("Goal sync skipped: module missing")
+        return {"skipped": True, "reason": "goal_cycle_missing"}
+
+    try:
+        db = _open_brain_db()
+        try:
+            result = cycle.sync_goal_statuses(db)
+            write_log(
+                "Goal sync: "
+                f"synced={result.get('synced', 0)} "
+                f"changed={result.get('changed', 0)}"
+            )
+            return result
+        finally:
+            db.close()
+    except Exception as exc:
+        write_log(
+            f"Goal sync failed: {type(exc).__name__}: {exc}"
+        )
+        return {"ok": False, "error": str(exc)}
+
+
 def run_agent_scheduler_cycle(guardian_data):
     if not boundary_ok:
         write_log(
@@ -425,7 +535,18 @@ def run_runtime_iteration():
     if not boundary_checked:
         run_boundary_self_check()
 
-    return run_agent_scheduler_cycle(data)
+    # V0.7.0: mid-loop wake re-eval so approval/resource resumes without reboot.
+    run_wake_reevaluation()
+
+    # V0.7.0: expand pending goals before scheduling so new tasks appear same tick.
+    run_goal_expand()
+
+    schedule_result = run_agent_scheduler_cycle(data)
+
+    # V0.7.0: sync goal completion after the schedule/execute tick.
+    run_goal_sync()
+
+    return schedule_result
 
 
 def main():

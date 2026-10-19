@@ -45,7 +45,8 @@ Unknown or disabled capabilities fail closed before gateway execution.
 
 ## Implications
 
-- No filesystem, git, browser, or research steps in templates until capability
-  invoke and policy (V0.6.2+) register them explicitly.
+- No filesystem, git, or browser steps in templates until capability invoke
+  and policy register them. `research` is approval-gated as of V0.8.5
+  (allow-listed HTTPS only; still not a planner template step).
 - Adding a new kind or operation requires updating this document, the planner
   allow-list, the adapter map, and a version step with tests.

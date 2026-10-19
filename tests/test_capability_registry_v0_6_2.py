@@ -29,7 +29,8 @@ def test_registry_lists_known_capabilities():
     assert "python_compile" in names
     assert "python.test" in names
     assert "git.status" in names
-    assert "research" not in names
+    # V0.8.5: research is registered but approval-gated (not hard-disabled).
+    assert "research" in names
     assert "browser" not in names
 
     cap = registry.get("python.test")
@@ -57,11 +58,8 @@ def test_require_denies_unknown_and_disabled():
     except PermissionError as exc:
         assert "disabled" in str(exc)
 
-    try:
-        registry.require("research")
-        raise AssertionError("disabled capability should deny")
-    except PermissionError as exc:
-        assert "disabled" in str(exc)
+    # research is listed; browser / filesystem.write stay hard-disabled.
+    assert registry.require("research")["command"] == "research"
 
     assert registry.get("nope") is None
     print("PASS require denies unknown and disabled")

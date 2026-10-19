@@ -81,6 +81,7 @@ the next version.
 | [V0.8.2](versions/v0.8.2.md) | Richer planning | Frozen · tag `v0.8.2` |
 | [V0.8.3](versions/v0.8.3.md) | Project awareness | Frozen · tag `v0.8.3` |
 | [V0.8.4](versions/v0.8.4.md) | Recovery report glue | Frozen · tag `v0.8.4` |
+| [V0.8.5](versions/v0.8.5.md) | Read-only web research | In progress · `v0.8.5-integration` |
 
 ## Working Rules
 

@@ -1,0 +1,20 @@
+# ANU read-only research (V0.8.5)
+# Network egress is allow-listed HTTPS only. No browser automation.
+research:
+  enabled: true
+  https_only: true
+  max_bytes: 262144
+  timeout_seconds: 30
+  block_private_networks: true
+  user_agent: ANU-Research/0.1 (+https://github.com/Sadhu2005/Anu-AI-Agent)
+  allow_hosts:
+    - api.duckduckgo.com
+    - duckduckgo.com
+    - docs.python.org
+    - www.python.org
+    - en.wikipedia.org
+    - raw.githubusercontent.com
+    - docs.github.com
+  search:
+    provider: duckduckgo_instant
+    endpoint: https://api.duckduckgo.com/

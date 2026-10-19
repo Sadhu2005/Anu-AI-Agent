@@ -48,6 +48,15 @@ execution_profiles:
       network: false
       filesystem_mode: workspace-read
       sandbox_required: true
+    research-fetch:
+      description: Read-only HTTPS research (allow-listed hosts)
+      ram_mb: 128
+      storage_mb: 10
+      timeout_seconds: 30
+      max_output_bytes: 262144
+      network: true
+      filesystem_mode: read-only
+      sandbox_required: false
   command_profiles:
     pwd: inspect
     git_version: system-info
@@ -62,3 +71,4 @@ execution_profiles:
     npm_version: system-info
     python_test: python-sandbox
     python_compile: python-sandbox
+    research: research-fetch

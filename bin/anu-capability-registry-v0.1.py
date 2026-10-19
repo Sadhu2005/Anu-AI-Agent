@@ -139,14 +139,63 @@ SANDBOX_COMMAND_SPECS = {
     },
 }
 
-# research / browser / filesystem.write remain disabled at invoke time until
-# an APPROVAL is granted via anu-approval-service (V0.6.7). Classification
-# maps them to APPROVAL; registry still fail-closed without a grant.
+# V0.8.5: research runs via anu-research (host HTTPS allow-list), not gateway.
+RESEARCH_COMMAND_SPECS = {
+    "research": {
+        "type": "research",
+        "operation": "research",
+        "executable": None,
+        "argv": [],
+    },
+}
+
+# browser / filesystem.write remain hard-disabled. research is registered but
+# approval-gated at evaluate/invoke (V0.6.7 boundary + V0.8.5 enablement).
 DISABLED_CAPABILITIES = frozenset({
-    "research",
     "browser",
     "filesystem.write",
 })
+
+APPROVAL_GATED_CAPABILITIES = frozenset({
+    "research",
+})
+
+
+def _load_approval_module():
+    for candidate in (
+        BASE / "bin" / "anu-approval-service-v0.1.py",
+        _HERE / "anu-approval-service-v0.1.py",
+        _REPO / "bin" / "anu-approval-service-v0.1.py",
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "anu_approval_service_v0_1_cap",
+                candidate,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise FileNotFoundError("anu-approval-service-v0.1.py not found")
+
+
+def _load_valid_approval(db, task_id, action):
+    """Return approved approval row or None (fail closed)."""
+    try:
+        mod = _load_approval_module()
+        return mod.has_valid_approval(db, task_id, action)
+    except Exception:
+        return None
+
+
+def _research_bin():
+    for candidate in (
+        BASE / "bin" / "anu-research-v0.1.py",
+        _HERE / "anu-research-v0.1.py",
+        _REPO / "bin" / "anu-research-v0.1.py",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _default_gateway_path():
@@ -296,9 +345,11 @@ class CapabilityRegistry:
         command_profiles = self._profiles_root.get("command_profiles") or {}
         profiles = self._profiles_root.get("profiles") or {}
 
-        # Union of yaml allow-list and profiled sandbox commands.
+        # Union of yaml allow-list, sandbox, and research command specs.
         candidates = dict(allowed)
         for name, spec in SANDBOX_COMMAND_SPECS.items():
+            candidates.setdefault(name, spec)
+        for name, spec in RESEARCH_COMMAND_SPECS.items():
             candidates.setdefault(name, spec)
 
         if not candidates:
@@ -384,15 +435,32 @@ class CapabilityRegistry:
         ):
             raise TypeError("task_id must be an integer or None")
 
+        out_args = {
+            "project": project.strip(),
+            "task_id": task_id,
+        }
+        if cap["name"] == "research" or cap["command"] == "research":
+            action = (arguments.get("action") or "fetch").strip().lower()
+            if action not in ("fetch", "search"):
+                raise ValueError("research action must be fetch or search")
+            out_args["action"] = action
+            if action == "fetch":
+                url = arguments.get("url")
+                if not isinstance(url, str) or not url.strip():
+                    raise ValueError("research fetch requires url")
+                out_args["url"] = url.strip()
+            else:
+                query = arguments.get("query")
+                if not isinstance(query, str) or not query.strip():
+                    raise ValueError("research search requires query")
+                out_args["query"] = query.strip()
+
         return {
             "ok": True,
             "capability": cap["name"],
             "command": cap["command"],
             "profile": cap["resource_limit"]["profile"],
-            "arguments": {
-                "project": project.strip(),
-                "task_id": task_id,
-            },
+            "arguments": out_args,
         }
 
     def evaluate_request(
@@ -465,6 +533,53 @@ class CapabilityRegistry:
                 )
             return decision
 
+        gate_name = validated["capability"]
+        if gate_name in APPROVAL_GATED_CAPABILITIES or (
+            validated["command"] in APPROVAL_GATED_CAPABILITIES
+        ):
+            invoke_task = task_id or validated["arguments"].get("task_id")
+            if db is None or invoke_task is None:
+                decision = {
+                    "admitted": False,
+                    "denied": True,
+                    "reason": (
+                        f"capability {gate_name!r} requires approved "
+                        "task_id + db"
+                    ),
+                    "denial_class": "approval",
+                    "capability": gate_name,
+                }
+                if db is not None:
+                    audit_capability_event(
+                        db,
+                        "CAPABILITY_DENIED",
+                        f"capability denied: {gate_name}",
+                        decision,
+                        task_id=invoke_task,
+                        goal_id=goal_id,
+                    )
+                return decision
+            approval = _load_valid_approval(db, invoke_task, gate_name)
+            if approval is None:
+                decision = {
+                    "admitted": False,
+                    "denied": True,
+                    "reason": (
+                        f"capability {gate_name!r} requires human approval"
+                    ),
+                    "denial_class": "approval",
+                    "capability": gate_name,
+                }
+                audit_capability_event(
+                    db,
+                    "CAPABILITY_DENIED",
+                    f"capability denied: {gate_name}",
+                    decision,
+                    task_id=invoke_task,
+                    goal_id=goal_id,
+                )
+                return decision
+
         decision = {
             "admitted": True,
             "denied": False,
@@ -520,6 +635,37 @@ class CapabilityRegistry:
             if task_id is not None
             else decision["arguments"].get("task_id")
         )
+
+        if command == "research":
+            result = _invoke_research(
+                decision,
+                db=db,
+                task_id=invoke_task_id,
+                goal_id=goal_id,
+            )
+            if db is not None:
+                audit_capability_event(
+                    db,
+                    "CAPABILITY_RESULT",
+                    (
+                        f"capability result: {name} "
+                        f"ok={result.get('ok')}"
+                    ),
+                    {
+                        "capability": name,
+                        "command": command,
+                        "project": project,
+                        "ok": result.get("ok"),
+                        "error": result.get("error"),
+                        "profile": decision.get("profile"),
+                        "research_id": (result.get("research_result") or {}).get(
+                            "research_id"
+                        ),
+                    },
+                    task_id=invoke_task_id,
+                    goal_id=goal_id,
+                )
+            return result
 
         gateway = Path(gateway_bin) if gateway_bin else None
         if gateway is None or not gateway.is_file():
@@ -617,6 +763,79 @@ class CapabilityRegistry:
         return result
 
 
+def _invoke_research(decision, *, db=None, task_id=None, goal_id=None):
+    """Run anu-research-v0.1.py as a host process (not gateway/sandbox)."""
+    del goal_id  # audited by caller
+    research_bin = _research_bin()
+    if research_bin is None:
+        return {
+            "ok": False,
+            "admitted": True,
+            "error": "anu-research-v0.1.py not found",
+            "decision": decision,
+        }
+    args = decision.get("arguments") or {}
+    action = args.get("action") or "fetch"
+    argv = [sys.executable, "-B", str(research_bin), action]
+    if action == "fetch":
+        argv.extend(["--url", args["url"]])
+    else:
+        argv.extend(["--query", args["query"]])
+    if task_id is not None:
+        argv.extend(["--task-id", str(task_id)])
+    if db is not None:
+        argv.append("--persist")
+        # Prefer the live connection's file when available.
+        db_path = None
+        try:
+            rows = db.execute("PRAGMA database_list").fetchall()
+            for row in rows:
+                # sqlite3.Row or tuple: (seq, name, file)
+                name = row[1] if not isinstance(row, sqlite3.Row) else row["name"]
+                path = row[2] if not isinstance(row, sqlite3.Row) else row["file"]
+                if name == "main" and path:
+                    db_path = path
+                    break
+        except Exception:
+            db_path = None
+        if db_path:
+            argv.extend(["--db", str(db_path)])
+
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        parsed = None
+        try:
+            parsed = json.loads(stdout)
+        except Exception:
+            parsed = None
+        ok = bool(parsed and parsed.get("ok")) if parsed else (
+            proc.returncode == 0
+        )
+        return {
+            "ok": ok,
+            "admitted": True,
+            "decision": decision,
+            "gateway_exit_code": proc.returncode,
+            "research_result": parsed,
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "admitted": True,
+            "error": str(exc),
+            "decision": decision,
+        }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="ANU Capability Registry v0.1"
@@ -633,18 +852,27 @@ def main(argv=None):
     req_p = sub.add_parser("require")
     req_p.add_argument("--name", required=True)
 
-    val_p = sub.add_parser("validate")
+    research_args = argparse.ArgumentParser(add_help=False)
+    research_args.add_argument(
+        "--action", default=None, help="research: fetch|search"
+    )
+    research_args.add_argument("--url", default=None, help="research fetch URL")
+    research_args.add_argument(
+        "--query", default=None, help="research search query"
+    )
+
+    val_p = sub.add_parser("validate", parents=[research_args])
     val_p.add_argument("--name", required=True)
     val_p.add_argument("--project", required=True)
     val_p.add_argument("--task-id", type=int, default=None)
 
-    admit_p = sub.add_parser("admit")
+    admit_p = sub.add_parser("admit", parents=[research_args])
     admit_p.add_argument("--name", required=True)
     admit_p.add_argument("--project", required=True)
     admit_p.add_argument("--task-id", type=int, default=None)
     admit_p.add_argument("--goal-id", type=int, default=None)
 
-    inv_p = sub.add_parser("invoke")
+    inv_p = sub.add_parser("invoke", parents=[research_args])
     inv_p.add_argument("--name", required=True)
     inv_p.add_argument("--project", required=True)
     inv_p.add_argument("--task-id", type=int, default=None)
@@ -677,11 +905,21 @@ def main(argv=None):
             return 1
         print(json.dumps({"ok": True, "capability": cap}, indent=2))
         return 0
+    def _cli_arguments():
+        payload = {"project": args.project, "task_id": args.task_id}
+        if getattr(args, "action", None):
+            payload["action"] = args.action
+        if getattr(args, "url", None):
+            payload["url"] = args.url
+        if getattr(args, "query", None):
+            payload["query"] = args.query
+        return payload
+
     if args.cmd == "validate":
         try:
             result = registry.validate_invocation(
                 args.name,
-                {"project": args.project, "task_id": args.task_id},
+                _cli_arguments(),
             )
         except (PermissionError, ValueError, TypeError) as exc:
             print(json.dumps({"ok": False, "error": str(exc)}))
@@ -716,7 +954,7 @@ def main(argv=None):
             if args.cmd == "admit":
                 decision = registry.evaluate_request(
                     args.name,
-                    {"project": args.project, "task_id": args.task_id},
+                    _cli_arguments(),
                     db=db,
                     task_id=args.task_id,
                     goal_id=args.goal_id,
@@ -725,7 +963,7 @@ def main(argv=None):
                 return 0 if decision.get("admitted") else 1
             result = registry.invoke(
                 args.name,
-                {"project": args.project, "task_id": args.task_id},
+                _cli_arguments(),
                 db=db,
                 task_id=args.task_id,
                 goal_id=args.goal_id,

@@ -3,6 +3,17 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.5] — 2026-10-19 · branch `v0.8.5-integration`
+
+Read-only web research (approval-gated HTTPS fetch/search).
+
+- `anu-research-v0.1.py`: allow-listed fetch + DuckDuckGo Instant search
+- Capability `research` registered; admit/invoke requires approved grant
+- `browser` / `filesystem.write` remain hard-disabled
+- Findings persist to `research` table
+- Pack: `run_v0_8_5_regression.py`
+- Pi smoke pending before freeze tag `v0.8.5`
+
 ## [V0.8.4] — 2026-10-19 · tag `v0.8.4`
 
 Recovery visibility in activity reports (`TASK_RECOVERY_POLICY`).

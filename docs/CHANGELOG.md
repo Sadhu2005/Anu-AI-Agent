@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.8.7] — 2026-10-19 · branch `v0.8.7-integration`
+## [V0.8.7] — 2026-10-19 · tag `v0.8.7`
 
 Wire research/GitHub into planning execution.
 
@@ -11,7 +11,7 @@ Wire research/GitHub into planning execution.
 - Task Engine capability path: approve → invoke → complete
 - LLM planner may emit `research` / `github` gather steps
 - Pack: `run_v0_8_7_regression.py`
-- Pi smoke pending before freeze tag `v0.8.7`
+- Pi: pack **3/3**; task 300 approve 4 → completed · `research_id=3`
 
 ## [V0.8.6] — 2026-10-19 · tag `v0.8.6`
 

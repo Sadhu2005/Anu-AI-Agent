@@ -130,9 +130,13 @@ def event(task_id, event_type, message, metadata=None):
         "metadata": metadata,
     }
 
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with LOG_FILE.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, sort_keys=True) + "\n")
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with LOG_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, sort_keys=True) + "\n")
+    except OSError:
+        # Portable tests / non-service users may lack write on /srv/anu/logs.
+        pass
 
     try:
         helper = _anu_db()
@@ -444,7 +448,6 @@ def _verify_mutation_attempt(task_id, attempt, run_id, result):
         db.close()
 
 
-@contextlib.contextmanager
 @contextlib.contextmanager
 def shared_execution_lock():
     """Held while a task executes so recovery never treats it as orphaned."""

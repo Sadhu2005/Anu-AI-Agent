@@ -34,6 +34,8 @@ OPERATION_TO_CAPABILITY = {
     "git_diff": "git.diff",
     "git_status_short": "git_status_short",
     "git_diff_stat": "git_diff_stat",
+    "research": "research",
+    "github": "github.read",
 }
 
 

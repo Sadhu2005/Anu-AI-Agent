@@ -24,7 +24,12 @@ BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
 _HERE = Path(__file__).resolve().parent
 
-ALLOWED_OPERATIONS = frozenset({"python_test", "python_compile"})
+ALLOWED_OPERATIONS = frozenset({
+    "python_test",
+    "python_compile",
+    "research",
+    "github",
+})
 DEFAULT_FALLBACK_TEMPLATE = "multi_stage_goal"
 DEFAULT_MAX_STEPS = 8
 
@@ -33,18 +38,20 @@ SYSTEM_PROMPT = (
     "Do NOT call tools or functions. Do NOT echo the user fields. "
     "Reply with ONE JSON object only (no markdown, no prose). "
     "Schema: {\"steps\":[{\"role\":\"short_id\",\"description\":\"one line\","
-    "\"operation\":\"python_test\"|\"python_compile\"}]}. "
+    "\"operation\":\"python_test\"|\"python_compile\"|\"research\"|\"github\"}]}. "
     "Prefer stage roles research, design, implement, test, verify when applicable. "
-    "1-8 steps. Only those two operations. No shell, paths, or commands."
+    "1-8 steps. Use research/github only for gather steps; otherwise "
+    "python_test/python_compile. No shell, paths, or commands."
 )
 
 RETRY_SYSTEM_PROMPT = (
     "IMPORTANT: Your previous reply was invalid. "
     "Output ONLY this JSON shape, nothing else, no tool calls: "
     "{\"steps\":[{\"role\":\"research\",\"description\":\"survey project\","
-    "\"operation\":\"python_compile\"}]}. "
+    "\"operation\":\"research\"}]}. "
     "Prefer roles research, design, implement, test, verify. "
-    "Use 1-8 real steps for the goal. Operations: python_test or python_compile only."
+    "Use 1-8 real steps. Operations: python_test, python_compile, "
+    "research, or github."
 )
 
 # Reasons that warrant a single stricter retry (tool-echo / empty plan).
@@ -365,7 +372,7 @@ def _build_user_prompt(goal, project_key, project_ctx, memory):
     }
     return (
         "Propose a linear plan for this ANU goal. "
-        "Use only python_test or python_compile. "
+        "Use python_test, python_compile, research, or github. "
         "Prefer stage roles research, design, implement, test, verify "
         "when they fit the goal.\n"
         + json.dumps(payload, indent=2)

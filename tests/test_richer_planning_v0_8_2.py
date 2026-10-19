@@ -130,7 +130,7 @@ def test_multi_stage_expand_roles_and_deps():
         assert roles == list(STAGES), roles
         ops = [a["parameters"]["operation"] for a in plan["actions"]]
         assert ops == [
-            "python_compile",
+            "research",
             "python_compile",
             "python_test",
             "python_test",

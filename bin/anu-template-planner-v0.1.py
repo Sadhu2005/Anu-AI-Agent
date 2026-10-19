@@ -26,11 +26,16 @@ BASE = Path("/srv/anu")
 DB_FILE = BASE / "brain" / "anu-brain.db"
 _HERE = Path(__file__).resolve().parent
 
-ALLOWED_OPERATIONS = frozenset({"python_test", "python_compile"})
+# V0.8.7: research/github are approval-gated capability ops (not mutations).
+ALLOWED_OPERATIONS = frozenset({
+    "python_test",
+    "python_compile",
+    "research",
+    "github",
+})
 
-# Named templates. Every step maps to an existing Safe Mutation operation.
-# Roles are recorded in AgentAction.parameters for later planners; execution
-# still goes through python_test / python_compile only.
+# Named templates. Mutation steps use Safe Mutation; research uses the
+# research capability (Task Engine capability path, V0.8.7).
 DEFAULT_TEMPLATE = "multi_stage_goal"
 
 TEMPLATES = {
@@ -39,7 +44,7 @@ TEMPLATES = {
             "action_id": "research",
             "kind": "TASK",
             "description": "survey project / gather baseline",
-            "operation": "python_compile",
+            "operation": "research",
             "role": "research",
         },
         {

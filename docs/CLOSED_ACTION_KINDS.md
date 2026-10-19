@@ -1,9 +1,8 @@
 # Closed action kinds (template planner)
 
-The V0.6.1 template planner is **closed**: only a fixed set of action kinds
+The template planner is **closed**: only a fixed set of action kinds
 and execution operations is allowed. This keeps Goal → Plan → Task Graph
-expansion on the existing Safe Mutation surface until V0.6.2+ capabilities
-widen the contract deliberately.
+expansion on deliberate surfaces.
 
 Source of truth: `bin/anu-template-planner-v0.1.py`.
 
@@ -16,38 +15,36 @@ Source of truth: `bin/anu-template-planner-v0.1.py`.
 
 ## Operations (execution spec)
 
-Template steps map to Safe Mutation / gateway operations only:
-
-| Operation | Maps to | In `ALLOWED_OPERATIONS` |
+| Operation | Maps to | Notes |
 |---|---|---|
-| `python_test` | Sandbox `python_test` (unittest discover) | yes |
-| `python_compile` | Sandbox `python_compile` | yes |
+| `python_test` | Sandbox via capability adapter | Safe Mutation |
+| `python_compile` | Sandbox via capability adapter | Safe Mutation |
+| `research` | `anu-research` (V0.8.5/7) | Approval-gated HTTPS search/fetch |
+| `github` | `anu-github` (V0.8.6/7) | Approval-gated GitHub GET |
 | *(any other)* | — | **no** |
 
 ```python
-ALLOWED_OPERATIONS = frozenset({"python_test", "python_compile"})
+ALLOWED_OPERATIONS = frozenset({
+    "python_test", "python_compile", "research", "github",
+})
 ```
 
-Roles such as `inspect`, `propose`, or `verify` may appear in
-`AgentAction.parameters` for future planners; **execution** still uses
-`python_test` or `python_compile` only.
+`multi_stage_goal` research stage uses operation `research` (V0.8.7).
+Other stages still use `python_compile` / `python_test`.
 
-## Execution path (V0.6.2 adapter)
-
-Safe Mutation no longer calls the command gateway directly for these
-operations. It uses `anu-capability-adapter-v0.1.py`:
+## Execution path
 
 ```text
-python_test → python.test → CapabilityRegistry.invoke → gateway run
-```
+python_test / python_compile
+  → Safe Mutation → capability adapter → gateway / sandbox
 
-Unknown or disabled capabilities fail closed before gateway execution.
+research / github
+  → Task Engine capability path → approval gate → registry.invoke
+  → anu-research / anu-github → research table
+```
 
 ## Implications
 
-- No filesystem, git, or browser steps in templates until capability invoke
-  and policy register them. `research` (V0.8.5) and `github` / `github.read`
-  (V0.8.6) are approval-gated allow-listed reads; still not planner template
-  steps.
-- Adding a new kind or operation requires updating this document, the planner
-  allow-list, the adapter map, and a version step with tests.
+- Browser / filesystem.write remain hard-disabled.
+- Adding a new operation requires updating this document, the planner
+  allow-list, Task Engine routing, and a version step with tests.

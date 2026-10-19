@@ -17,7 +17,6 @@ Safety model:
 
 import argparse
 import contextlib
-import fcntl
 import importlib.util
 import json
 import os
@@ -27,6 +26,12 @@ import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # Windows host tests; Pi/Linux keep real flock
+    fcntl = None
+
 
 BASE = Path(os.environ.get("ANU_BASE", "/srv/anu"))
 DB_FILE = BASE / "brain" / "anu-brain.db"
@@ -58,6 +63,11 @@ TERMINAL = {"completed", "blocked"}
 RETRYABLE = {"failed"}
 RUNNABLE = {"pending", "ready"}
 IN_FLIGHT = {"planning", "ready", "running", "verifying"}
+
+# V0.8.7: approval-gated capability ops (not Safe Mutation).
+CAPABILITY_OPERATIONS = frozenset({"research", "github"})
+DEFAULT_GITHUB_OWNER = "Sadhu2005"
+DEFAULT_GITHUB_REPO = "Anu-AI-Agent"
 
 
 def _max_attempts_from_policy():
@@ -435,8 +445,12 @@ def _verify_mutation_attempt(task_id, attempt, run_id, result):
 
 
 @contextlib.contextmanager
+@contextlib.contextmanager
 def shared_execution_lock():
     """Held while a task executes so recovery never treats it as orphaned."""
+    if fcntl is None:
+        yield
+        return
     EXECUTION_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(EXECUTION_LOCK_FILE, os.O_RDONLY | os.O_CREAT, 0o644)
     try:
@@ -958,6 +972,308 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
         process.returncode or 1,
     )
 
+def _load_module(filename, module_name):
+    for candidate in (
+        BASE / "bin" / filename,
+        _HERE / filename,
+        _HERE.parent / "bin" / filename,
+    ):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                module_name, candidate
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise FileNotFoundError(filename)
+
+
+def build_capability_invoke_args(db, *, operation, project, task_id):
+    """Build registry invoke arguments for research/github (V0.8.7)."""
+    if operation not in CAPABILITY_OPERATIONS:
+        raise ValueError(f"not a capability operation: {operation}")
+    args = {"project": project, "task_id": task_id}
+    if operation == "research":
+        query = project
+        try:
+            row = db.execute(
+                """
+                SELECT g.description
+                FROM tasks t
+                LEFT JOIN goals g ON g.id = t.goal_id
+                WHERE t.id = ?
+                """,
+                (task_id,),
+            ).fetchone()
+            if row and row[0]:
+                query = str(row[0]).strip() or project
+        except Exception:
+            pass
+        args["action"] = "search"
+        args["query"] = query[:200]
+        return args
+
+    owner = DEFAULT_GITHUB_OWNER
+    repo = DEFAULT_GITHUB_REPO
+    try:
+        row = db.execute(
+            """
+            SELECT p.repository
+            FROM tasks t
+            JOIN goals g ON g.id = t.goal_id
+            JOIN projects p ON p.id = g.project_id
+            WHERE t.id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+        if row and row[0] and "/" in str(row[0]):
+            text = str(row[0]).rstrip("/").split("github.com/")[-1]
+            parts = [p for p in text.split("/") if p]
+            if len(parts) >= 2:
+                owner, repo = parts[0], parts[1]
+                if repo.endswith(".git"):
+                    repo = repo[:-4]
+    except Exception:
+        pass
+    args["action"] = "repo"
+    args["owner"] = owner
+    args["repo"] = repo
+    return args
+
+
+def _run_capability_once(
+    task_id, project, changes_file, operation, attempt, run_id=None
+):
+    with shared_execution_lock():
+        return _run_capability_locked(
+            task_id, project, changes_file, operation, attempt, run_id
+        )
+
+
+def _run_capability_locked(
+    task_id, project, changes_file, operation, attempt, run_id=None
+):
+    """Execute research/github via capability registry (approval-gated)."""
+    del changes_file  # unused for capability ops; kept for start_task signature
+    update_task(
+        task_id,
+        status="planning",
+        attempts=attempt,
+        failure_class=None,
+        retry_after=None,
+    )
+    event(
+        task_id,
+        "TASK_STATE",
+        "planning",
+        {"attempt": attempt, "run_id": run_id, "operation": operation},
+    )
+    update_task(task_id, status="ready")
+    event(
+        task_id,
+        "TASK_STATE",
+        "ready",
+        {
+            "project": project,
+            "operation": operation,
+            "attempt": attempt,
+            "run_id": run_id,
+            "path": "capability",
+        },
+    )
+    update_task(task_id, status="running")
+    event(
+        task_id,
+        "TASK_STATE",
+        "running",
+        {"attempt": attempt, "run_id": run_id, "path": "capability"},
+    )
+
+    db = db_connect()
+    try:
+        approval_mod = _load_module(
+            "anu-approval-service-v0.1.py",
+            "anu_approval_service_v0_1_engine",
+        )
+        registry_mod = _load_module(
+            "anu-capability-registry-v0.1.py",
+            "anu_capability_registry_v0_1_engine",
+        )
+        try:
+            approval_mod.migrate(db)
+        except Exception:
+            pass
+
+        existing = approval_mod.has_valid_approval(db, task_id, operation)
+        if existing is None:
+            rec = approval_mod.request_approval(
+                db,
+                action=operation,
+                task_id=task_id,
+                reason=f"capability_operation:{operation}",
+                put_task_waiting=True,
+            )
+            event(
+                task_id,
+                "TASK_APPROVAL_REQUIRED",
+                f"approval required for {operation}",
+                {
+                    "attempt": attempt,
+                    "run_id": run_id,
+                    "operation": operation,
+                    "approval_id": rec.get("id") if rec else None,
+                },
+            )
+            current = fetch_task(task_id)
+            return (
+                {
+                    "ok": False,
+                    "task_id": task_id,
+                    "task_status": current["status"],
+                    "attempt": attempt,
+                    "run_id": run_id,
+                    "retryable": False,
+                    "reason": "approval_required",
+                    "operation": operation,
+                    "approval": rec,
+                },
+                2,
+            )
+
+        invoke_args = build_capability_invoke_args(
+            db, operation=operation, project=project, task_id=task_id
+        )
+        registry = registry_mod.CapabilityRegistry.from_files()
+        result = registry.invoke(
+            operation,
+            invoke_args,
+            db=db,
+            task_id=task_id,
+        )
+        if result.get("ok"):
+            update_task(task_id, status="completed", retry_after=None)
+            event(
+                task_id,
+                "TASK_COMPLETED",
+                f"capability {operation} completed",
+                {
+                    "attempt": attempt,
+                    "run_id": run_id,
+                    "operation": operation,
+                    "capability_ok": True,
+                    "research_id": (
+                        (result.get("research_result") or {}).get("research_id")
+                        or (result.get("github_result") or {}).get("research_id")
+                    ),
+                },
+            )
+            return (
+                {
+                    "ok": True,
+                    "task_id": task_id,
+                    "task_status": "completed",
+                    "attempt": attempt,
+                    "run_id": run_id,
+                    "operation": operation,
+                    "capability": result,
+                },
+                0,
+            )
+
+        decision = result.get("decision") or {}
+        if decision.get("denial_class") == "approval":
+            rec = approval_mod.request_approval(
+                db,
+                action=operation,
+                task_id=task_id,
+                reason=decision.get("reason") or "approval",
+                put_task_waiting=True,
+            )
+            current = fetch_task(task_id)
+            return (
+                {
+                    "ok": False,
+                    "task_id": task_id,
+                    "task_status": current["status"],
+                    "attempt": attempt,
+                    "run_id": run_id,
+                    "retryable": False,
+                    "reason": "approval_required",
+                    "operation": operation,
+                    "approval": rec,
+                    "capability": result,
+                },
+                2,
+            )
+
+        update_task(
+            task_id,
+            status="failed",
+            failure_class="environment",
+        )
+        event(
+            task_id,
+            "TASK_FAILED",
+            f"capability {operation} failed",
+            {
+                "attempt": attempt,
+                "run_id": run_id,
+                "operation": operation,
+                "error": result.get("error"),
+            },
+        )
+        return (
+            {
+                "ok": False,
+                "task_id": task_id,
+                "task_status": "failed",
+                "attempt": attempt,
+                "run_id": run_id,
+                "retryable": True,
+                "reason": "capability_failed",
+                "operation": operation,
+                "capability": result,
+            },
+            1,
+        )
+    except Exception as exc:
+        update_task(
+            task_id,
+            status="failed",
+            failure_class="environment",
+        )
+        event(
+            task_id,
+            "TASK_FAILED",
+            f"capability path error: {type(exc).__name__}",
+            {
+                "attempt": attempt,
+                "run_id": run_id,
+                "operation": operation,
+                "error": str(exc),
+            },
+        )
+        return (
+            {
+                "ok": False,
+                "task_id": task_id,
+                "task_status": "failed",
+                "attempt": attempt,
+                "run_id": run_id,
+                "retryable": True,
+                "reason": "capability_path_error",
+                "operation": operation,
+                "error": str(exc),
+            },
+            1,
+        )
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
 def start_task(task_id, project, changes_file, operation):
     task = fetch_task(task_id)
 
@@ -992,6 +1308,16 @@ def start_task(task_id, project, changes_file, operation):
     if attempt > MAX_ATTEMPTS:
         raise RuntimeError(
             f"Task {task_id} exceeded MAX_ATTEMPTS={MAX_ATTEMPTS}"
+        )
+
+    if operation in CAPABILITY_OPERATIONS:
+        return _run_capability_once(
+            task_id,
+            project,
+            changes_file,
+            operation,
+            attempt,
+            run_id=run_id,
         )
 
     return _run_mutation_once(
@@ -1054,6 +1380,16 @@ def retry_task(task_id, project, changes_file, operation):
             "run_id": run_id,
         },
     )
+
+    if operation in CAPABILITY_OPERATIONS:
+        return _run_capability_once(
+            task_id,
+            project,
+            changes_file,
+            operation,
+            attempt,
+            run_id=run_id,
+        )
 
     return _run_mutation_once(
         task_id,
@@ -1122,7 +1458,12 @@ def main():
     run.add_argument("--changes-file", required=True)
     run.add_argument(
         "--operation",
-        choices=["python_test", "python_compile"],
+        choices=[
+            "python_test",
+            "python_compile",
+            "research",
+            "github",
+        ],
         default="python_test",
     )
 
@@ -1132,7 +1473,12 @@ def main():
     retry.add_argument("--changes-file", required=True)
     retry.add_argument(
         "--operation",
-        choices=["python_test", "python_compile"],
+        choices=[
+            "python_test",
+            "python_compile",
+            "research",
+            "github",
+        ],
         default="python_test",
     )
 

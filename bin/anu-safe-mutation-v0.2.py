@@ -2,7 +2,6 @@
 
 import argparse
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -14,6 +13,11 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # Windows host tests; Pi/Linux keep real flock
+    fcntl = None
 
 BASE = Path(os.environ.get('ANU_BASE', '/srv/anu'))
 GATEWAY = BASE / 'bin' / 'anu-command-gateway.py'
@@ -67,7 +71,8 @@ def shared_execution_lock():
             os.fchmod(fd, 0o644)
         except PermissionError:
             pass
-        fcntl.flock(fd, fcntl.LOCK_SH)
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_SH)
         yield
     finally:
         os.close(fd)
@@ -796,7 +801,17 @@ def run_transaction():
 
 
 def _collect_actual_changed_files(project_name, task_id, tx):
-    """Best-effort working-tree change list via git status --short."""
+    """Best-effort working-tree change list via git status --short.
+
+    V0.8.11: if the project is not itself a git root, skip status. Walking up
+    to ``ANU_BASE`` reports the whole agent checkout and poisons diff-scope.
+    Safe Mutation only writes declared files, so ``None`` remains scope-OK.
+    """
+    project_root = WORKSPACE / project_name
+    git_meta = project_root / '.git'
+    if not git_meta.exists():
+        tx['details']['git_status_short_skipped'] = 'project_not_git_root'
+        return None
     try:
         payload = run_gateway(project_name, 'git_status_short', task_id)
     except Exception as exc:
@@ -813,7 +828,12 @@ def _collect_actual_changed_files(project_name, task_id, tx):
         nested = payload.get('payload')
         if not stdout and isinstance(nested, dict):
             stdout = nested.get('stdout') or ''
-    return _parse_git_status_short(stdout)
+    paths = _parse_git_status_short(stdout)
+    # Reject parent-repo relative escapes if status still walks upward.
+    if any('..' in str(p).replace('\\', '/').split('/') for p in paths):
+        tx['details']['git_status_short_skipped'] = 'paths_outside_project'
+        return None
+    return paths
 
 
 def _parse_git_status_short(stdout):

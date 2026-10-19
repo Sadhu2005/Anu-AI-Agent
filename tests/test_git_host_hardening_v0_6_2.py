@@ -26,11 +26,13 @@ def test_harden_host_argv_git_flags():
         "-c",
         "core.hooksPath=/dev/null",
     ]
-    assert argv[5:] == ["status"]
+    assert "safe.directory=*" in argv
+    assert argv[-1] == "status"
 
     diff_argv = mod.harden_host_argv("git_diff", ["git", "diff", "HEAD"])
     assert "core.fsmonitor=false" in diff_argv
     assert "core.hooksPath=/dev/null" in diff_argv
+    assert "safe.directory=*" in diff_argv
     assert "--no-ext-diff" in diff_argv
     assert "--no-textconv" in diff_argv
 
@@ -58,9 +60,29 @@ def test_fsmonitor_flags_precede_subcommand():
     print("PASS fsmonitor/hooksPath -c flags precede git subcommand")
 
 
+def test_safe_directory_includes_project_and_base():
+    mod = load()
+    argv = mod.harden_host_argv(
+        "git_status_short",
+        ["git", "status", "--short"],
+        project_path="/srv/anu/workspace/projects/sandbox-test-project",
+    )
+    assert "safe.directory=*" in argv
+    assert any(
+        isinstance(x, str) and x.startswith("safe.directory=") and "sandbox" in x
+        for x in argv
+    )
+    assert any(
+        isinstance(x, str) and x == f"safe.directory={mod.BASE.resolve()}"
+        for x in argv
+    )
+    print("PASS safe.directory includes * project and BASE")
+
+
 if __name__ == "__main__":
     print("===== ANU F4 GIT HOST HARDENING REGRESSION =====")
     test_harden_host_argv_git_flags()
     test_host_command_env_minimal()
     test_fsmonitor_flags_precede_subcommand()
+    test_safe_directory_includes_project_and_base()
     print("GIT_HOST_HARDENING_TEST_COMPLETE")

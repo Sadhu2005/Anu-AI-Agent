@@ -38,14 +38,36 @@ def host_command_env():
     }
 
 
-def harden_host_argv(command_name, argv):
-    """Inject safe git -c flags for repository-controlled config (F4)."""
+def harden_host_argv(command_name, argv, project_path=None):
+    """Inject safe git -c flags for repository-controlled config (F4).
+
+    V0.8.11: also set ``safe.directory`` so host git works when the discovered
+    repo (often ``ANU_BASE`` for workspace projects without their own ``.git``)
+    is owned by a different uid than the agent (e.g. root-owned ``.git``).
+    """
     if not argv:
         return list(argv)
     exe = Path(argv[0]).name
     if exe != "git":
         return list(argv)
-    hardened = [argv[0], "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
+    hardened = [
+        argv[0],
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "safe.directory=*",
+    ]
+    # Prefer explicit dirs when known (multi -c safe.directory is additive).
+    for directory in (project_path, BASE):
+        if directory is None:
+            continue
+        try:
+            resolved = str(Path(directory).resolve())
+        except Exception:
+            continue
+        hardened.extend(["-c", f"safe.directory={resolved}"])
     rest = list(argv[1:])
     if command_name in ("git_diff", "git_diff_stat") or (
         rest and rest[0] == "diff"
@@ -1125,6 +1147,7 @@ def cmd_run(config, command_name, project, task_id=None):
             definition["executable"],
             *definition["argv"],
         ],
+        project_path=project_path,
     )
 
     timeout_seconds = int(

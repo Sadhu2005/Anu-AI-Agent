@@ -3,6 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.11] — 2026-10-19 · integration
+
+Git safe.directory for sandbox mutations.
+
+- Host git: `-c safe.directory=*` (+ project / `ANU_BASE`)
+- Skip `git status` when project is not a git root (avoids parent-repo poison)
+- Pack: `run_v0_8_11_regression.py`
+
 ## [V0.8.10] — 2026-10-19 · tag `v0.8.10`
 
 Multi-stage mutation changes path.

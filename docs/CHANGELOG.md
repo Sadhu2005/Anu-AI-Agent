@@ -10,6 +10,7 @@ Multi-stage mutation changes path.
 - Default / expand normalize to project-relative `.anu-changes.json`
 - Loose `changes.json` falls back to canonical / legacy sandbox plan
 - Pack: `run_v0_8_10_regression.py`
+- Pi: pack **3/3**; task 301 mutation resolves plan + `COMPILE_OK`
 
 ## [V0.8.9] — 2026-10-19 · tag `v0.8.9`
 

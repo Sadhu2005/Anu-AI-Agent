@@ -111,8 +111,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.10 (multi-stage changes path) is on `v0.8.10-integration` — pack ready,
-awaiting Pi smoke / freeze.
+V0.8.10 (multi-stage changes path) is on `v0.8.10-integration` — Pi pack +
+path smoke proven; say **freeze** for tag `v0.8.10`.
 
 ## Model gateway (V0.7.1 frozen)
 

@@ -86,7 +86,7 @@ the next version.
 | [V0.8.7](versions/v0.8.7.md) | Plan ↔ research/github | Frozen · tag `v0.8.7` |
 | [V0.8.8](versions/v0.8.8.md) | Research report glue | Frozen · tag `v0.8.8` |
 | [V0.8.9](versions/v0.8.9.md) | Scheduler auto-advance | Frozen · tag `v0.8.9` |
-| [V0.8.10](versions/v0.8.10.md) | Multi-stage changes path | Integration · pack ready |
+| [V0.8.10](versions/v0.8.10.md) | Multi-stage changes path | Integration · Pi proven · awaiting freeze |
 
 ## Working Rules
 

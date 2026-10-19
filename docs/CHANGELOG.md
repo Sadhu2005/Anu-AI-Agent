@@ -10,6 +10,7 @@ Git safe.directory for sandbox mutations.
 - Host git: `-c safe.directory=*` (+ project / `ANU_BASE`)
 - Skip `git status` when project is not a git root (avoids parent-repo poison)
 - Pack: `run_v0_8_11_regression.py`
+- Pi: pack **3/3**; task 301 `COMMITTED` → auto-advance **302**
 
 ## [V0.8.10] — 2026-10-19 · tag `v0.8.10`
 

@@ -82,7 +82,7 @@ the next version.
 | [V0.8.3](versions/v0.8.3.md) | Project awareness | Frozen · tag `v0.8.3` |
 | [V0.8.4](versions/v0.8.4.md) | Recovery report glue | Frozen · tag `v0.8.4` |
 | [V0.8.5](versions/v0.8.5.md) | Read-only web research | Frozen · tag `v0.8.5` |
-| [V0.8.6](versions/v0.8.6.md) | GitHub read | In progress · `v0.8.6-integration` |
+| [V0.8.6](versions/v0.8.6.md) | GitHub read | Frozen · tag `v0.8.6` |
 
 ## Working Rules
 

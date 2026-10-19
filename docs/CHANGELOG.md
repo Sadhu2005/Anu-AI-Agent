@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.8.6] — 2026-10-19 · branch `v0.8.6-integration`
+## [V0.8.6] — 2026-10-19 · tag `v0.8.6`
 
 GitHub read (approval-gated API: repo / contents / issue).
 
@@ -12,7 +12,7 @@ GitHub read (approval-gated API: repo / contents / issue).
 - Optional token via `ANU_GITHUB_TOKEN` (public repos work without)
 - Findings persist to `research` table
 - Pack: `run_v0_8_6_regression.py`
-- Pi smoke pending before freeze tag `v0.8.6`
+- Pi: pack **3/3**; approval 3 → repo task 299 → `research_id=2`
 
 ## [V0.8.5] — 2026-10-19 · tag `v0.8.5`
 

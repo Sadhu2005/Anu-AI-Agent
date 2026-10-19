@@ -107,8 +107,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.6 (GitHub read) is in progress on `v0.8.6-integration`.
-V0.8.5 remains frozen (tag `v0.8.5`).
+V0.8.6 (GitHub read) is frozen (tag `v0.8.6`).
+Next slice is open — pick from VISION / ROADMAP when ready.
 
 ## Model gateway (V0.7.1 frozen)
 

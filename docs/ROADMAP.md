@@ -112,8 +112,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.11 (git safe.directory) is on `v0.8.11-integration` — Pi pack + live
-301 `COMMITTED` proven; say **freeze** for tag `v0.8.11`.
+V0.8.11 (git safe.directory) is frozen (tag `v0.8.11`).
+Next slice is open — pick from VISION / ROADMAP when ready.
 
 ## Model gateway (V0.7.1 frozen)
 

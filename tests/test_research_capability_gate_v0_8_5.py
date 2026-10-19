@@ -137,9 +137,13 @@ def test_research_admitted_and_invoked_with_approval():
             stdout = json.dumps(fake_out)
             stderr = ""
 
-        assert "anu-research-v0.1.py" in " ".join(argv)
+        joined = " ".join(str(a) for a in argv)
+        assert "anu-research-v0.1.py" in joined
         assert "search" in argv
         assert "--query" in argv
+        # Parent flags must precede the subcommand.
+        assert argv.index("--db") < argv.index("search")
+        assert argv.index("--persist") < argv.index("search")
         return P()
 
     with mock.patch("subprocess.run", side_effect=fake_run):

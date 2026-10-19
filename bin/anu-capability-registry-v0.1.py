@@ -776,16 +776,10 @@ def _invoke_research(decision, *, db=None, task_id=None, goal_id=None):
         }
     args = decision.get("arguments") or {}
     action = args.get("action") or "fetch"
-    argv = [sys.executable, "-B", str(research_bin), action]
-    if action == "fetch":
-        argv.extend(["--url", args["url"]])
-    else:
-        argv.extend(["--query", args["query"]])
-    if task_id is not None:
-        argv.extend(["--task-id", str(task_id)])
+    # Parent-parser flags (--db/--config) must come before the subcommand.
+    argv = [sys.executable, "-B", str(research_bin)]
     if db is not None:
         argv.append("--persist")
-        # Prefer the live connection's file when available.
         db_path = None
         try:
             rows = db.execute("PRAGMA database_list").fetchall()
@@ -800,6 +794,13 @@ def _invoke_research(decision, *, db=None, task_id=None, goal_id=None):
             db_path = None
         if db_path:
             argv.extend(["--db", str(db_path)])
+    argv.append(action)
+    if action == "fetch":
+        argv.extend(["--url", args["url"]])
+    else:
+        argv.extend(["--query", args["query"]])
+    if task_id is not None:
+        argv.extend(["--task-id", str(task_id)])
 
     try:
         proc = subprocess.run(

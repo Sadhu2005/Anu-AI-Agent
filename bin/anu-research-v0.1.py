@@ -283,17 +283,20 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="ANU Research v0.1")
     parser.add_argument("--config", default=None)
     parser.add_argument("--db", default=None)
+    parser.add_argument(
+        "--persist",
+        action="store_true",
+        help="Write findings to the research table",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     fetch_p = sub.add_parser("fetch")
     fetch_p.add_argument("--url", required=True)
     fetch_p.add_argument("--task-id", type=int, default=None)
-    fetch_p.add_argument("--persist", action="store_true")
 
     search_p = sub.add_parser("search")
     search_p.add_argument("--query", required=True)
     search_p.add_argument("--task-id", type=int, default=None)
-    search_p.add_argument("--persist", action="store_true")
 
     args = parser.parse_args(argv)
     cfg, cfg_path = load_config(args.config)

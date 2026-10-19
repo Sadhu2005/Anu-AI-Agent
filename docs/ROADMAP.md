@@ -81,6 +81,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.8.7](versions/v0.8.7.md) | Plan ↔ research/github | Multi-stage research invokes capabilities | V0.8.6 |
 | [V0.8.8](versions/v0.8.8.md) | Research report glue | Activity reports show research findings | V0.8.7 |
 | [V0.8.9](versions/v0.8.9.md) | Scheduler auto-advance | Next READY dependent starts after success | V0.8.8 |
+| [V0.8.10](versions/v0.8.10.md) | Multi-stage changes path | Project-relative mutation plan after auto-advance | V0.8.9 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -110,8 +111,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.9 (scheduler auto-advance) is frozen (tag `v0.8.9`).
-Next slice is open — pick from VISION / ROADMAP when ready.
+V0.8.10 (multi-stage changes path) is on `v0.8.10-integration` — pack ready,
+awaiting Pi smoke / freeze.
 
 ## Model gateway (V0.7.1 frozen)
 

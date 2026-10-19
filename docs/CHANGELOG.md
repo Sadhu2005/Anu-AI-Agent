@@ -3,6 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.10] — 2026-10-19 · integration
+
+Multi-stage mutation changes path.
+
+- Default / expand normalize to project-relative `.anu-changes.json`
+- Loose `changes.json` falls back to canonical / legacy sandbox plan
+- Pack: `run_v0_8_10_regression.py`
+
 ## [V0.8.9] — 2026-10-19 · tag `v0.8.9`
 
 Scheduler auto-advance after stage completion.

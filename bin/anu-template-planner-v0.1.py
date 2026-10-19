@@ -38,6 +38,9 @@ ALLOWED_OPERATIONS = frozenset({
 # research capability (Task Engine capability path, V0.8.7).
 DEFAULT_TEMPLATE = "multi_stage_goal"
 
+# V0.8.10: project-relative mutation plan (not a CWD-relative bare name).
+DEFAULT_CHANGES_FILE = ".anu-changes.json"
+
 TEMPLATES = {
     "multi_stage_goal": [
         {
@@ -310,12 +313,43 @@ def _project_context_for_planning(db, project):
         }
 
 
+def _load_project_paths():
+    return _load_module(
+        _module_path("anu-project-paths-v0.1.py"),
+        "anu_project_paths_v0_1_planner",
+    )
+
+
+def _normalize_changes_file_for_expand(project_name, changes_file):
+    """V0.8.10: persist a changes file that exists inside the project when possible."""
+    paths = _load_project_paths()
+    preferred = (changes_file or paths.DEFAULT_CHANGES_FILE).strip()
+    workspaces = (
+        paths.DEFAULT_WORKSPACE,
+        BASE / "workspace" / "projects",
+        _HERE.parent / "workspace" / "projects",
+    )
+    for ws in workspaces:
+        try:
+            if not Path(ws).is_dir():
+                continue
+            root = paths.resolve_project(ws, project_name)
+            return paths.pick_existing_changes_file(root, preferred=preferred)
+        except Exception:
+            continue
+    # Portable / missing workspace: keep caller value, prefer canonical default
+    # over the historic bare ``changes.json`` name.
+    if preferred == "changes.json":
+        return paths.DEFAULT_CHANGES_FILE
+    return preferred
+
+
 def expand_goal(
     db,
     goal_id,
     project,
     template_name=DEFAULT_TEMPLATE,
-    changes_file="changes.json",
+    changes_file=None,
     plan_id=None,
 ):
     """Create plan + task graph for a goal from a template.
@@ -326,11 +360,13 @@ def expand_goal(
 
     if not isinstance(project, str) or not project.strip():
         raise ValueError("project must be a non-empty string")
+    if changes_file is None:
+        changes_file = DEFAULT_CHANGES_FILE
     if not isinstance(changes_file, str) or not changes_file.strip():
         raise ValueError("changes_file must be a non-empty string")
 
     project = project.strip()
-    changes_file = changes_file.strip()
+    changes_file = _normalize_changes_file_for_expand(project, changes_file.strip())
 
     goals = _load_goal_service()
     plans = _load_plan_service()
@@ -453,7 +489,7 @@ def main(argv=None):
     expand_p.add_argument("--goal-id", type=int, required=True)
     expand_p.add_argument("--project", required=True)
     expand_p.add_argument("--template", default=DEFAULT_TEMPLATE)
-    expand_p.add_argument("--changes-file", default="changes.json")
+    expand_p.add_argument("--changes-file", default=DEFAULT_CHANGES_FILE)
     expand_p.add_argument("--plan-id", default=None)
 
     args = parser.parse_args(argv)

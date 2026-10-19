@@ -190,6 +190,13 @@ jobs:
           else
             echo "skip: no V0.8.9 pack on this branch"
           fi
+      - name: V0.8.10 regression pack
+        run: |
+          if [ -f tests/run_v0_8_10_regression.py ]; then
+            python tests/run_v0_8_10_regression.py
+          else
+            echo "skip: no V0.8.10 pack on this branch"
+          fi
 
   config-yaml:
     runs-on: ubuntu-latest

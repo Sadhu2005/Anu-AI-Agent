@@ -106,8 +106,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.5 (read-only web research) is in progress on `v0.8.5-integration`.
-V0.8.4 remains frozen (tag `v0.8.4`).
+V0.8.5 (read-only web research) is frozen (tag `v0.8.5`).
+Next slice is open — GitHub read is a natural follow-on from research.
 
 ## Model gateway (V0.7.1 frozen)
 

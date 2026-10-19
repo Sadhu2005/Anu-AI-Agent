@@ -336,6 +336,77 @@ def _recovery_summary_from_events(events, *, memory_recovery_tags=None):
     }
 
 
+def _list_goal_research(db, goal_id, *, limit=20):
+    """V0.8.8: research / github findings linked to this goal's tasks."""
+    if isinstance(goal_id, bool) or not isinstance(goal_id, int) or goal_id < 1:
+        return []
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        limit = 20
+    try:
+        present = {
+            row[1] for row in db.execute("PRAGMA table_info(research)")
+        }
+    except Exception:
+        return []
+    if "id" not in present:
+        return []
+    try:
+        rows = db.execute(
+            """
+            SELECT r.id, r.task_id, r.url, r.title, r.summary, r.created_at,
+                   t.title AS task_title
+            FROM research r
+            JOIN tasks t ON t.id = r.task_id
+            WHERE t.goal_id = ?
+            ORDER BY r.id DESC
+            LIMIT ?
+            """,
+            (goal_id, limit),
+        ).fetchall()
+    except Exception:
+        return []
+    items = []
+    for row in rows:
+        if hasattr(row, "keys"):
+            item = {k: row[k] for k in row.keys()}
+        else:
+            item = {
+                "id": row[0],
+                "task_id": row[1],
+                "url": row[2],
+                "title": row[3],
+                "summary": row[4],
+                "created_at": row[5],
+                "task_title": row[6] if len(row) > 6 else None,
+            }
+        summary = item.get("summary")
+        if isinstance(summary, str) and len(summary) > 280:
+            item["summary"] = summary[:277] + "..."
+        items.append(item)
+    return items
+
+
+def _research_summary(items):
+    """Compact goal-level research block."""
+    items = list(items or [])
+    latest = None
+    if items:
+        top = items[0]
+        latest = {
+            "id": top.get("id"),
+            "task_id": top.get("task_id"),
+            "title": top.get("title"),
+            "url": top.get("url"),
+            "created_at": top.get("created_at"),
+            "task_title": top.get("task_title"),
+        }
+    return {
+        "count": len(items),
+        "latest": latest,
+        "items": items,
+    }
+
+
 def _summary_from_tasks(tasks, events):
     total = len(tasks)
     completed = sum(
@@ -411,6 +482,7 @@ def report_goal(db, goal_id, *, event_limit=DEFAULT_EVENT_LIMIT):
     recovery = _recovery_summary_from_events(
         events, memory_recovery_tags=memory_tags
     )
+    research = _research_summary(_list_goal_research(db, goal_id))
 
     return {
         "ok": True,
@@ -427,6 +499,7 @@ def report_goal(db, goal_id, *, event_limit=DEFAULT_EVENT_LIMIT):
         "events": events,
         "summary": _summary_from_tasks(tasks, events),
         "recovery": recovery,
+        "research": research,
         "project_dossier": project_dossier,
     }
 
@@ -464,6 +537,8 @@ def report_project(db, project_key, *, event_limit=DEFAULT_EVENT_LIMIT):
 
     recovery_policy_event_count = 0
     latest_recovery_action = None
+    research_count = 0
+    latest_research_title = None
     for goal_report in recent:
         if not isinstance(goal_report, dict) or not goal_report.get("ok"):
             continue
@@ -474,6 +549,13 @@ def report_project(db, project_key, *, event_limit=DEFAULT_EVENT_LIMIT):
             action = latest.get("action")
             if isinstance(action, str) and action:
                 latest_recovery_action = action
+        rblock = goal_report.get("research") or {}
+        research_count += int(rblock.get("count") or 0)
+        if latest_research_title is None:
+            latest_r = rblock.get("latest") or {}
+            title = latest_r.get("title")
+            if isinstance(title, str) and title:
+                latest_research_title = title
 
     return {
         "ok": True,
@@ -488,6 +570,8 @@ def report_project(db, project_key, *, event_limit=DEFAULT_EVENT_LIMIT):
             "recent_goal_count": len(recent),
             "recovery_policy_event_count": recovery_policy_event_count,
             "latest_recovery_action": latest_recovery_action,
+            "research_count": research_count,
+            "latest_research_title": latest_research_title,
         },
     }
 

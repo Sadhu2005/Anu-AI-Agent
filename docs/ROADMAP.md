@@ -79,6 +79,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.8.5](versions/v0.8.5.md) | Read-only web research | Approval-gated HTTPS fetch/search | V0.8.4 |
 | [V0.8.6](versions/v0.8.6.md) | GitHub read | Approval-gated repo/contents/issue GET | V0.8.5 |
 | [V0.8.7](versions/v0.8.7.md) | Plan ↔ research/github | Multi-stage research invokes capabilities | V0.8.6 |
+| [V0.8.8](versions/v0.8.8.md) | Research report glue | Activity reports show research findings | V0.8.7 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -108,8 +109,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.7 (plan ↔ research/github) is frozen (tag `v0.8.7`).
-Next slice is open — pick from VISION / ROADMAP when ready.
+V0.8.8 (research visibility in activity reports) is in progress on
+`v0.8.8-integration`. V0.8.7 remains frozen (tag `v0.8.7`).
 
 ## Model gateway (V0.7.1 frozen)
 

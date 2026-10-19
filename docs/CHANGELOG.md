@@ -3,6 +3,15 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.8] — 2026-10-19 · branch `v0.8.8-integration`
+
+Research visibility in activity reports.
+
+- Goal reports: `research` block (`count`, `latest`, `items`)
+- Project reports: `research_count` / `latest_research_title`
+- Pack: `run_v0_8_8_regression.py`
+- Pi smoke pending before freeze tag `v0.8.8`
+
 ## [V0.8.7] — 2026-10-19 · tag `v0.8.7`
 
 Wire research/GitHub into planning execution.

@@ -85,7 +85,7 @@ the next version.
 | [V0.8.6](versions/v0.8.6.md) | GitHub read | Frozen · tag `v0.8.6` |
 | [V0.8.7](versions/v0.8.7.md) | Plan ↔ research/github | Frozen · tag `v0.8.7` |
 | [V0.8.8](versions/v0.8.8.md) | Research report glue | Frozen · tag `v0.8.8` |
-| [V0.8.9](versions/v0.8.9.md) | Scheduler auto-advance | Integration · pack ready |
+| [V0.8.9](versions/v0.8.9.md) | Scheduler auto-advance | Integration · Pi proven · awaiting freeze |
 
 ## Working Rules
 

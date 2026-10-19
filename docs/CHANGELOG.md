@@ -10,6 +10,7 @@ Scheduler auto-advance after stage completion.
 - Task Engine starts one READY dependent after success (chain cap 8)
 - `TASK_AUTO_ADVANCE` event; approval on next stage still parks waiting
 - Pack: `run_v0_8_9_regression.py`
+- Pi: pack **3/3**; task 300 → auto-advance **301** (event 30535)
 
 ## [V0.8.8] — 2026-10-19 · tag `v0.8.8`
 

@@ -3,6 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.9] — 2026-10-19 · integration
+
+Scheduler auto-advance after stage completion.
+
+- Task Engine starts one READY dependent after success (chain cap 8)
+- `TASK_AUTO_ADVANCE` event; approval on next stage still parks waiting
+- Pack: `run_v0_8_9_regression.py`
+
 ## [V0.8.8] — 2026-10-19 · tag `v0.8.8`
 
 Research visibility in activity reports.

@@ -69,6 +69,9 @@ CAPABILITY_OPERATIONS = frozenset({"research", "github"})
 DEFAULT_GITHUB_OWNER = "Sadhu2005"
 DEFAULT_GITHUB_REPO = "Anu-AI-Agent"
 
+# V0.8.9: after success, start at most this many successor stages in-chain.
+MAX_AUTO_ADVANCE_CHAIN = 8
+
 
 def _max_attempts_from_policy():
     """V0.6.6: MAX_ATTEMPTS from authoritative resource policy."""
@@ -532,7 +535,16 @@ def _recover_lost_mutation(task_id, attempt, run_id, result, code):
     )
 
 
-def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_id=None):
+def _run_mutation_once(
+    task_id,
+    project,
+    changes_file,
+    operation,
+    attempt,
+    run_id=None,
+    *,
+    _chain_depth=0,
+):
     with shared_execution_lock():
         result, code = _run_mutation_locked(
             task_id, project, changes_file, operation, attempt, run_id
@@ -542,6 +554,10 @@ def _run_mutation_once(task_id, project, changes_file, operation, attempt, run_i
     if result.get("reason") in LOST_MUTATION_REASONS:
         return _recover_lost_mutation(task_id, attempt, run_id, result, code)
 
+    if code == 0 and isinstance(result, dict) and result.get("ok"):
+        result = _maybe_auto_advance(
+            task_id, result, chain_depth=_chain_depth
+        )
     return result, code
 
 
@@ -1044,13 +1060,129 @@ def build_capability_invoke_args(db, *, operation, project, task_id):
     return args
 
 
+def _load_execution_spec_module():
+    return _load_module(
+        "anu-task-execution-spec-v0.1.py",
+        "anu_task_execution_spec_v0_1_engine",
+    )
+
+
+def find_next_ready_successor(db, completed_task_id):
+    """Return the highest-priority pending task that depends on completed_task_id
+    and whose Task Graph admission is READY, or None.
+    """
+    if (
+        isinstance(completed_task_id, bool)
+        or not isinstance(completed_task_id, int)
+        or completed_task_id < 1
+    ):
+        raise ValueError("completed_task_id must be a positive integer")
+    try:
+        rows = db.execute(
+            """
+            SELECT t.id AS task_id, t.priority, t.status
+            FROM tasks t
+            JOIN task_dependencies d ON d.task_id = t.id
+            WHERE d.depends_on_task_id = ?
+              AND t.status = 'pending'
+            ORDER BY t.priority DESC, t.id ASC
+            """,
+            (completed_task_id,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Pre-graph / portable DBs without task_dependencies: nothing to advance.
+        return None
+    for row in rows:
+        task_id = row["task_id"] if hasattr(row, "keys") else row[0]
+        admission = dependency_admission(task_id)
+        if admission.get("state") == "READY":
+            return int(task_id)
+    return None
+
+
+def _maybe_auto_advance(completed_task_id, result, *, chain_depth=0):
+    """V0.8.9: after a successful completion, start one READY successor."""
+    if not isinstance(result, dict) or not result.get("ok"):
+        return result
+    if result.get("task_status") != "completed":
+        return result
+    if chain_depth >= MAX_AUTO_ADVANCE_CHAIN:
+        result["auto_advance"] = {
+            "skipped": True,
+            "reason": "max_chain_depth",
+            "chain_depth": chain_depth,
+        }
+        return result
+
+    db = db_connect()
+    try:
+        next_id = find_next_ready_successor(db, completed_task_id)
+        if next_id is None:
+            result["auto_advance"] = {"advanced": False, "reason": "no_ready_successor"}
+            return result
+        specs = _load_execution_spec_module()
+        desc = specs.fetch_execution_descriptor(db, next_id)
+        if desc is None:
+            result["auto_advance"] = {
+                "advanced": False,
+                "reason": "missing_execution_spec",
+                "task_id": next_id,
+            }
+            return result
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+    event(
+        completed_task_id,
+        "TASK_AUTO_ADVANCE",
+        f"auto-advance to task {next_id}",
+        {
+            "from_task_id": completed_task_id,
+            "to_task_id": next_id,
+            "chain_depth": chain_depth,
+            "operation": desc.get("operation"),
+        },
+    )
+    payload, code = start_task(
+        next_id,
+        desc["project"],
+        desc["changes_file"],
+        desc["operation"],
+        _chain_depth=chain_depth + 1,
+    )
+    result["auto_advance"] = {
+        "advanced": True,
+        "task_id": next_id,
+        "operation": desc.get("operation"),
+        "chain_depth": chain_depth,
+        "result": payload,
+        "exit_code": code,
+    }
+    return result
+
+
 def _run_capability_once(
-    task_id, project, changes_file, operation, attempt, run_id=None
+    task_id,
+    project,
+    changes_file,
+    operation,
+    attempt,
+    run_id=None,
+    *,
+    _chain_depth=0,
 ):
     with shared_execution_lock():
-        return _run_capability_locked(
+        result, code = _run_capability_locked(
             task_id, project, changes_file, operation, attempt, run_id
         )
+    if code == 0 and isinstance(result, dict) and result.get("ok"):
+        result = _maybe_auto_advance(
+            task_id, result, chain_depth=_chain_depth
+        )
+    return result, code
 
 
 def _run_capability_locked(
@@ -1277,7 +1409,7 @@ def _run_capability_locked(
             pass
 
 
-def start_task(task_id, project, changes_file, operation):
+def start_task(task_id, project, changes_file, operation, *, _chain_depth=0):
     task = fetch_task(task_id)
 
     if not task:
@@ -1321,6 +1453,7 @@ def start_task(task_id, project, changes_file, operation):
             operation,
             attempt,
             run_id=run_id,
+            _chain_depth=_chain_depth,
         )
 
     return _run_mutation_once(
@@ -1330,6 +1463,7 @@ def start_task(task_id, project, changes_file, operation):
         operation,
         attempt,
         run_id=run_id,
+        _chain_depth=_chain_depth,
     )
 
 
@@ -1392,6 +1526,7 @@ def retry_task(task_id, project, changes_file, operation):
             operation,
             attempt,
             run_id=run_id,
+            _chain_depth=0,
         )
 
     return _run_mutation_once(
@@ -1401,6 +1536,7 @@ def retry_task(task_id, project, changes_file, operation):
         operation,
         attempt,
         run_id=run_id,
+        _chain_depth=0,
     )
 
 

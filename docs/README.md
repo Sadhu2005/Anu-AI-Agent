@@ -88,7 +88,7 @@ the next version.
 | [V0.8.9](versions/v0.8.9.md) | Scheduler auto-advance | Frozen · tag `v0.8.9` |
 | [V0.8.10](versions/v0.8.10.md) | Multi-stage changes path | Frozen · tag `v0.8.10` |
 | [V0.8.11](versions/v0.8.11.md) | Git safe.directory | Frozen · tag `v0.8.11` |
-| [V0.8.12](versions/v0.8.12.md) | Hands-off first stage | Integration · pack ready |
+| [V0.8.12](versions/v0.8.12.md) | Hands-off first stage | Integration · Pi proven · awaiting freeze |
 
 ## Working Rules
 

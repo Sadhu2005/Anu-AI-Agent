@@ -10,6 +10,7 @@ Hands-off first stage after goal expand.
 - `start_first_ready_for_goal` via production agent WAKE
 - Expand/once default starts stage 1; `--no-start-first` to skip
 - Pack: `run_v0_8_12_regression.py`
+- Pi: pack **3/3**; goal 14 → task 305 `waiting` (approval) without manual `run`
 
 ## [V0.8.11] — 2026-10-19 · tag `v0.8.11`
 

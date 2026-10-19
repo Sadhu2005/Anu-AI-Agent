@@ -113,8 +113,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.12 (hands-off first stage) is on `v0.8.12-integration` — pack ready,
-awaiting Pi smoke / freeze.
+V0.8.12 (hands-off first stage) is on `v0.8.12-integration` — Pi pack +
+live expand→wake proven; say **freeze** for tag `v0.8.12`.
 
 ## Model gateway (V0.7.1 frozen)
 

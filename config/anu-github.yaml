@@ -1,0 +1,18 @@
+# ANU GitHub read (V0.8.6) — approval-gated, read-only API access.
+# No push, PR create, or issue write. Token optional for public repos.
+github:
+  enabled: true
+  api_base: https://api.github.com
+  https_only: true
+  max_bytes: 262144
+  timeout_seconds: 30
+  user_agent: ANU-GitHub/0.1 (+https://github.com/Sadhu2005/Anu-AI-Agent)
+  # Optional bearer token (public repos work without it).
+  token_env: ANU_GITHUB_TOKEN
+  token_file_env: ANU_GITHUB_TOKEN_FILE
+  # Owners ANU may read without expanding this list.
+  allow_owners:
+    - Sadhu2005
+  allow_hosts:
+    - api.github.com
+    - raw.githubusercontent.com

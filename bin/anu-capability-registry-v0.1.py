@@ -120,6 +120,7 @@ CAPABILITY_ALIASES = {
     "python.compile": "python_compile",
     "git.status": "git_status",
     "git.diff": "git_diff",
+    "github.read": "github",
 }
 
 # Sandbox commands live in the gateway Python allow-list (COMMANDS), not
@@ -139,7 +140,7 @@ SANDBOX_COMMAND_SPECS = {
     },
 }
 
-# V0.8.5: research runs via anu-research (host HTTPS allow-list), not gateway.
+# V0.8.5/V0.8.6: research + github run as host tools (not gateway/sandbox).
 RESEARCH_COMMAND_SPECS = {
     "research": {
         "type": "research",
@@ -149,8 +150,17 @@ RESEARCH_COMMAND_SPECS = {
     },
 }
 
-# browser / filesystem.write remain hard-disabled. research is registered but
-# approval-gated at evaluate/invoke (V0.6.7 boundary + V0.8.5 enablement).
+GITHUB_COMMAND_SPECS = {
+    "github": {
+        "type": "github",
+        "operation": "github",
+        "executable": None,
+        "argv": [],
+    },
+}
+
+# browser / filesystem.write remain hard-disabled. research/github are
+# registered but approval-gated at evaluate/invoke.
 DISABLED_CAPABILITIES = frozenset({
     "browser",
     "filesystem.write",
@@ -158,6 +168,7 @@ DISABLED_CAPABILITIES = frozenset({
 
 APPROVAL_GATED_CAPABILITIES = frozenset({
     "research",
+    "github",
 })
 
 
@@ -192,6 +203,17 @@ def _research_bin():
         BASE / "bin" / "anu-research-v0.1.py",
         _HERE / "anu-research-v0.1.py",
         _REPO / "bin" / "anu-research-v0.1.py",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _github_bin():
+    for candidate in (
+        BASE / "bin" / "anu-github-v0.1.py",
+        _HERE / "anu-github-v0.1.py",
+        _REPO / "bin" / "anu-github-v0.1.py",
     ):
         if candidate.is_file():
             return candidate
@@ -351,6 +373,8 @@ class CapabilityRegistry:
             candidates.setdefault(name, spec)
         for name, spec in RESEARCH_COMMAND_SPECS.items():
             candidates.setdefault(name, spec)
+        for name, spec in GITHUB_COMMAND_SPECS.items():
+            candidates.setdefault(name, spec)
 
         if not candidates:
             raise RuntimeError("no candidate commands for capability registry")
@@ -455,6 +479,36 @@ class CapabilityRegistry:
                     raise ValueError("research search requires query")
                 out_args["query"] = query.strip()
 
+        if cap["name"] in ("github", "github.read") or cap["command"] == "github":
+            action = (arguments.get("action") or "repo").strip().lower()
+            if action not in ("repo", "contents", "issue"):
+                raise ValueError(
+                    "github action must be repo, contents, or issue"
+                )
+            owner = arguments.get("owner")
+            repo = arguments.get("repo")
+            if not isinstance(owner, str) or not owner.strip():
+                raise ValueError("github requires owner")
+            if not isinstance(repo, str) or not repo.strip():
+                raise ValueError("github requires repo")
+            out_args["action"] = action
+            out_args["owner"] = owner.strip()
+            out_args["repo"] = repo.strip()
+            if action == "contents":
+                path = arguments.get("path")
+                if not isinstance(path, str) or not path.strip():
+                    raise ValueError("github contents requires path")
+                out_args["path"] = path.strip()
+            if action == "issue":
+                number = arguments.get("number")
+                if (
+                    isinstance(number, bool)
+                    or not isinstance(number, int)
+                    or number < 1
+                ):
+                    raise ValueError("github issue requires positive number")
+                out_args["number"] = number
+
         return {
             "ok": True,
             "capability": cap["name"],
@@ -533,47 +587,47 @@ class CapabilityRegistry:
                 )
             return decision
 
-        gate_name = validated["capability"]
-        if gate_name in APPROVAL_GATED_CAPABILITIES or (
-            validated["command"] in APPROVAL_GATED_CAPABILITIES
-        ):
+        # Use command name for approval action (aliases like github.read → github).
+        approval_action = validated["command"]
+        if approval_action in APPROVAL_GATED_CAPABILITIES:
             invoke_task = task_id or validated["arguments"].get("task_id")
             if db is None or invoke_task is None:
                 decision = {
                     "admitted": False,
                     "denied": True,
                     "reason": (
-                        f"capability {gate_name!r} requires approved "
+                        f"capability {approval_action!r} requires approved "
                         "task_id + db"
                     ),
                     "denial_class": "approval",
-                    "capability": gate_name,
+                    "capability": validated["capability"],
                 }
                 if db is not None:
                     audit_capability_event(
                         db,
                         "CAPABILITY_DENIED",
-                        f"capability denied: {gate_name}",
+                        f"capability denied: {validated['capability']}",
                         decision,
                         task_id=invoke_task,
                         goal_id=goal_id,
                     )
                 return decision
-            approval = _load_valid_approval(db, invoke_task, gate_name)
+            approval = _load_valid_approval(db, invoke_task, approval_action)
             if approval is None:
                 decision = {
                     "admitted": False,
                     "denied": True,
                     "reason": (
-                        f"capability {gate_name!r} requires human approval"
+                        f"capability {approval_action!r} requires human "
+                        "approval"
                     ),
                     "denial_class": "approval",
-                    "capability": gate_name,
+                    "capability": validated["capability"],
                 }
                 audit_capability_event(
                     db,
                     "CAPABILITY_DENIED",
-                    f"capability denied: {gate_name}",
+                    f"capability denied: {validated['capability']}",
                     decision,
                     task_id=invoke_task,
                     goal_id=goal_id,
@@ -659,6 +713,37 @@ class CapabilityRegistry:
                         "error": result.get("error"),
                         "profile": decision.get("profile"),
                         "research_id": (result.get("research_result") or {}).get(
+                            "research_id"
+                        ),
+                    },
+                    task_id=invoke_task_id,
+                    goal_id=goal_id,
+                )
+            return result
+
+        if command == "github":
+            result = _invoke_github(
+                decision,
+                db=db,
+                task_id=invoke_task_id,
+                goal_id=goal_id,
+            )
+            if db is not None:
+                audit_capability_event(
+                    db,
+                    "CAPABILITY_RESULT",
+                    (
+                        f"capability result: {name} "
+                        f"ok={result.get('ok')}"
+                    ),
+                    {
+                        "capability": name,
+                        "command": command,
+                        "project": project,
+                        "ok": result.get("ok"),
+                        "error": result.get("error"),
+                        "profile": decision.get("profile"),
+                        "research_id": (result.get("github_result") or {}).get(
                             "research_id"
                         ),
                     },
@@ -763,6 +848,19 @@ class CapabilityRegistry:
         return result
 
 
+def _db_file_path(db):
+    try:
+        rows = db.execute("PRAGMA database_list").fetchall()
+        for row in rows:
+            name = row[1] if not isinstance(row, sqlite3.Row) else row["name"]
+            path = row[2] if not isinstance(row, sqlite3.Row) else row["file"]
+            if name == "main" and path:
+                return path
+    except Exception:
+        return None
+    return None
+
+
 def _invoke_research(decision, *, db=None, task_id=None, goal_id=None):
     """Run anu-research-v0.1.py as a host process (not gateway/sandbox)."""
     del goal_id  # audited by caller
@@ -780,18 +878,7 @@ def _invoke_research(decision, *, db=None, task_id=None, goal_id=None):
     argv = [sys.executable, "-B", str(research_bin)]
     if db is not None:
         argv.append("--persist")
-        db_path = None
-        try:
-            rows = db.execute("PRAGMA database_list").fetchall()
-            for row in rows:
-                # sqlite3.Row or tuple: (seq, name, file)
-                name = row[1] if not isinstance(row, sqlite3.Row) else row["name"]
-                path = row[2] if not isinstance(row, sqlite3.Row) else row["file"]
-                if name == "main" and path:
-                    db_path = path
-                    break
-        except Exception:
-            db_path = None
+        db_path = _db_file_path(db)
         if db_path:
             argv.extend(["--db", str(db_path)])
     argv.append(action)
@@ -837,6 +924,69 @@ def _invoke_research(decision, *, db=None, task_id=None, goal_id=None):
         }
 
 
+def _invoke_github(decision, *, db=None, task_id=None, goal_id=None):
+    """Run anu-github-v0.1.py as a host process (not gateway/sandbox)."""
+    del goal_id
+    github_bin = _github_bin()
+    if github_bin is None:
+        return {
+            "ok": False,
+            "admitted": True,
+            "error": "anu-github-v0.1.py not found",
+            "decision": decision,
+        }
+    args = decision.get("arguments") or {}
+    action = args.get("action") or "repo"
+    argv = [sys.executable, "-B", str(github_bin)]
+    if db is not None:
+        argv.append("--persist")
+        db_path = _db_file_path(db)
+        if db_path:
+            argv.extend(["--db", str(db_path)])
+    argv.append(action)
+    argv.extend(["--owner", args["owner"], "--repo", args["repo"]])
+    if action == "contents":
+        argv.extend(["--path", args["path"]])
+    if action == "issue":
+        argv.extend(["--number", str(args["number"])])
+    if task_id is not None:
+        argv.extend(["--task-id", str(task_id)])
+
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        parsed = None
+        try:
+            parsed = json.loads(stdout)
+        except Exception:
+            parsed = None
+        ok = bool(parsed and parsed.get("ok")) if parsed else (
+            proc.returncode == 0
+        )
+        return {
+            "ok": ok,
+            "admitted": True,
+            "decision": decision,
+            "gateway_exit_code": proc.returncode,
+            "github_result": parsed,
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "admitted": True,
+            "error": str(exc),
+            "decision": decision,
+        }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="ANU Capability Registry v0.1"
@@ -855,11 +1005,19 @@ def main(argv=None):
 
     research_args = argparse.ArgumentParser(add_help=False)
     research_args.add_argument(
-        "--action", default=None, help="research: fetch|search"
+        "--action",
+        default=None,
+        help="research: fetch|search · github: repo|contents|issue",
     )
     research_args.add_argument("--url", default=None, help="research fetch URL")
     research_args.add_argument(
         "--query", default=None, help="research search query"
+    )
+    research_args.add_argument("--owner", default=None, help="github owner")
+    research_args.add_argument("--repo", default=None, help="github repo")
+    research_args.add_argument("--path", default=None, help="github contents path")
+    research_args.add_argument(
+        "--number", type=int, default=None, help="github issue number"
     )
 
     val_p = sub.add_parser("validate", parents=[research_args])
@@ -914,6 +1072,14 @@ def main(argv=None):
             payload["url"] = args.url
         if getattr(args, "query", None):
             payload["query"] = args.query
+        if getattr(args, "owner", None):
+            payload["owner"] = args.owner
+        if getattr(args, "repo", None):
+            payload["repo"] = args.repo
+        if getattr(args, "path", None):
+            payload["path"] = args.path
+        if getattr(args, "number", None) is not None:
+            payload["number"] = args.number
         return payload
 
     if args.cmd == "validate":

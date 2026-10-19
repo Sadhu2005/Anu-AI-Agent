@@ -77,6 +77,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.8.3](versions/v0.8.3.md) | Project awareness | Project dossier for plan + reports | V0.8.2 |
 | [V0.8.4](versions/v0.8.4.md) | Recovery report glue | Activity reports show TASK_RECOVERY_POLICY | V0.8.3 |
 | [V0.8.5](versions/v0.8.5.md) | Read-only web research | Approval-gated HTTPS fetch/search | V0.8.4 |
+| [V0.8.6](versions/v0.8.6.md) | GitHub read | Approval-gated repo/contents/issue GET | V0.8.5 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -106,8 +107,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.5 (read-only web research) is frozen (tag `v0.8.5`).
-Next slice is open — GitHub read is a natural follow-on from research.
+V0.8.6 (GitHub read) is in progress on `v0.8.6-integration`.
+V0.8.5 remains frozen (tag `v0.8.5`).
 
 ## Model gateway (V0.7.1 frozen)
 

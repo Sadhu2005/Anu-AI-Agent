@@ -52,6 +52,7 @@ DENY_ACTIONS = frozenset({
 # Risky capabilities that require a recorded approval (when invoked).
 APPROVAL_ACTIONS = frozenset({
     "research",
+    "github",
     "browser",
     "filesystem.write",
     "download",

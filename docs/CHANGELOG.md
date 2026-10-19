@@ -3,6 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.12] — 2026-10-19 · integration
+
+Hands-off first stage after goal expand.
+
+- `start_first_ready_for_goal` via production agent WAKE
+- Expand/once default starts stage 1; `--no-start-first` to skip
+- Pack: `run_v0_8_12_regression.py`
+
 ## [V0.8.11] — 2026-10-19 · tag `v0.8.11`
 
 Git safe.directory for sandbox mutations.

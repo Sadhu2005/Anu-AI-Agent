@@ -89,10 +89,68 @@ def _load_memory():
     )
 
 
+def _load_scheduler():
+    return _load(
+        "anu_task_scheduler_v0812",
+        _HERE / "anu-task-scheduler-v0.1.py",
+    )
+
+
 def _require_db(db):
     if not isinstance(db, sqlite3.Connection):
         raise TypeError("db must be a sqlite3.Connection")
     return db
+
+
+def start_first_ready_for_goal(db, goal_id, *, max_tasks=1):
+    """V0.8.12: after expand, wake the first READY pending task for this goal.
+
+    Uses the production agent WAKE path (same as the scheduler tick) so stage 1
+    starts without a manual ``run``. Approval-gated ops still park ``waiting``.
+    """
+    db = _require_db(db)
+    if isinstance(goal_id, bool) or not isinstance(goal_id, int) or goal_id < 1:
+        raise ValueError("goal_id must be a positive integer")
+    if isinstance(max_tasks, bool) or not isinstance(max_tasks, int) or max_tasks < 1:
+        raise ValueError("max_tasks must be a positive integer")
+
+    scheduler = _load_scheduler()
+    candidates = []
+    for item in scheduler.discover_ready_tasks(db):
+        task_id = item.get("task_id") if isinstance(item, dict) else item[0]
+        row = db.execute(
+            "SELECT goal_id FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            continue
+        gid = row["goal_id"] if hasattr(row, "keys") else row[0]
+        if gid == goal_id:
+            candidates.append(item)
+
+    if not candidates:
+        return {
+            "started": False,
+            "reason": "no_ready_task",
+            "goal_id": goal_id,
+        }
+
+    selected = candidates[:max_tasks]
+    plan = scheduler.build_ready_task_wake_plan(db, selected)
+    handler = scheduler.build_production_agent_wake_execution_handler(db)
+    results = scheduler.consume_dependency_wake_plan(
+        plan,
+        {"WAKE": handler},
+    )
+    return {
+        "started": True,
+        "goal_id": goal_id,
+        "task_ids": [
+            (c.get("task_id") if isinstance(c, dict) else c[0])
+            for c in selected
+        ],
+        "results": results,
+    }
 
 
 def resolve_project_key(db, goal) -> str | None:
@@ -175,11 +233,15 @@ def expand_pending_goals(
     max_goals=1,
     template_name="multi_stage_goal",
     changes_file=".anu-changes.json",
+    start_first_ready=True,
 ):
     """Expand up to max_goals pending goals that are not yet planned.
 
     Skips goals without a resolvable registered project. Idempotent: already
     expanded goals are left alone.
+
+    V0.8.12: when ``start_first_ready`` is true (default), wake the first READY
+    task for each newly expanded goal via the production agent path.
     """
     db = _require_db(db)
     if not isinstance(max_goals, int) or isinstance(max_goals, bool) or max_goals < 1:
@@ -215,12 +277,23 @@ def expand_pending_goals(
                 template_name=template_name,
                 changes_file=changes_file,
             )
+            first_ready = None
+            if start_first_ready:
+                try:
+                    first_ready = start_first_ready_for_goal(db, goal_id)
+                except Exception as exc:
+                    first_ready = {
+                        "started": False,
+                        "goal_id": goal_id,
+                        "reason": f"{type(exc).__name__}: {exc}",
+                    }
             expanded.append({
                 "goal_id": goal_id,
                 "project": project_key,
                 "task_count": len(result.get("tasks") or []),
                 "template": result.get("template") or template_name,
                 "source": result.get("source") or "template",
+                "first_ready": first_ready,
             })
         except Exception as exc:
             skipped.append({
@@ -328,14 +401,16 @@ def run_goal_cycle_once(
     template_name="multi_stage_goal",
     changes_file=".anu-changes.json",
     sync=True,
+    start_first_ready=True,
 ):
-    """One orchestration tick: expand pending → optionally sync statuses."""
+    """One orchestration tick: expand pending → start first READY → sync."""
     db = _require_db(db)
     expand = expand_pending_goals(
         db,
         max_goals=max_expand,
         template_name=template_name,
         changes_file=changes_file,
+        start_first_ready=start_first_ready,
     )
     sync_result = None
     if sync:
@@ -363,6 +438,11 @@ def main(argv=None):
     expand_p.add_argument("--max-goals", type=int, default=1)
     expand_p.add_argument("--template", default="multi_stage_goal")
     expand_p.add_argument("--changes-file", default=".anu-changes.json")
+    expand_p.add_argument(
+        "--no-start-first",
+        action="store_true",
+        help="V0.8.12: expand only; do not wake first READY task",
+    )
 
     sync_p = sub.add_parser("sync")
     sync_p.add_argument("--limit", type=int, default=100)
@@ -372,6 +452,11 @@ def main(argv=None):
     cycle_p.add_argument("--template", default="multi_stage_goal")
     cycle_p.add_argument("--changes-file", default=".anu-changes.json")
     cycle_p.add_argument("--no-sync", action="store_true")
+    cycle_p.add_argument(
+        "--no-start-first",
+        action="store_true",
+        help="V0.8.12: expand only; do not wake first READY task",
+    )
 
     args = parser.parse_args(argv)
     db = db_connect(args.db)
@@ -382,6 +467,7 @@ def main(argv=None):
                 max_goals=args.max_goals,
                 template_name=args.template,
                 changes_file=args.changes_file,
+                start_first_ready=not args.no_start_first,
             )
             print(json.dumps({"ok": True, "result": result}, indent=2))
             return 0
@@ -396,6 +482,7 @@ def main(argv=None):
                 template_name=args.template,
                 changes_file=args.changes_file,
                 sync=not args.no_sync,
+                start_first_ready=not args.no_start_first,
             )
             print(json.dumps({"ok": True, "result": result}, indent=2))
             return 0

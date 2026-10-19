@@ -116,7 +116,9 @@ def test_expand_then_sync_completes():
     old = os.environ.get("ANU_BASE")
     os.environ["ANU_BASE"] = str(REPO)
     try:
-        expand = cycle.expand_pending_goals(db, max_goals=1)
+        expand = cycle.expand_pending_goals(
+            db, max_goals=1, start_first_ready=False
+        )
         assert expand["expanded_count"] == 1, expand
         assert expand["expanded"][0]["goal_id"] == 1
         # V0.8.2+: default template is multi_stage_goal (5 stages).
@@ -129,7 +131,9 @@ def test_expand_then_sync_completes():
         assert cycle.goal_already_expanded(db, 1) is True
         db.execute("UPDATE goals SET status = 'pending' WHERE id = 1")
         db.commit()
-        again = cycle.expand_pending_goals(db, max_goals=1)
+        again = cycle.expand_pending_goals(
+            db, max_goals=1, start_first_ready=False
+        )
         assert again["expanded_count"] == 0, again
         assert any(s["reason"] == "already_expanded" for s in again["skipped"])
 
@@ -192,8 +196,10 @@ def test_skips_goal_without_project():
         # Expand only the orphan (id=2) by completing project goal first path:
         # max_goals=1 takes oldest pending (id=1 with project). Expand id=1 then
         # check orphan alone.
-        cycle.expand_pending_goals(db, max_goals=1)
-        result = cycle.expand_pending_goals(db, max_goals=1)
+        cycle.expand_pending_goals(db, max_goals=1, start_first_ready=False)
+        result = cycle.expand_pending_goals(
+            db, max_goals=1, start_first_ready=False
+        )
         assert result["expanded_count"] == 0
         reasons = [s["reason"] for s in result["skipped"]]
         assert "no_project" in reasons or "already_expanded" in reasons

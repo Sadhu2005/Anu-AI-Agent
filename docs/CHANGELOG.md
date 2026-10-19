@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.8.9] — 2026-10-19 · integration
+## [V0.8.9] — 2026-10-19 · tag `v0.8.9`
 
 Scheduler auto-advance after stage completion.
 

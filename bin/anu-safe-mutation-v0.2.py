@@ -685,6 +685,11 @@ def run_transaction():
             return_code = 2
             return finalize(tx, return_code)
 
+        # Verify-only / already-applied: old==new for every entry. Inspect/test
+        # stages share the changes file after implement; noop must COMMIT.
+        verify_only = all(c['old'] == c['new'] for c in changes)
+        tx['details']['verify_only'] = verify_only
+
         checkpoint_dir, files = make_checkpoint(
             args.project, project, changes, transaction_id
         )
@@ -696,17 +701,20 @@ def run_transaction():
         checkpoint_event(transaction_id, args.task_id, 'PRE_MUTATION',
                          'CHECKPOINT_CREATED', {'files': files})
 
-        for item, change in zip(files, changes):
-            target = resolve_file(project, item['path'])
-            current = ensure_text(target)
-            if current.count(change['old']) != 1:
-                raise RuntimeError(
-                    f"{change['file']}: source changed after checkpoint creation"
-                )
-            atomic_write(target, current.replace(change['old'], change['new'], 1))
+        if not verify_only:
+            for item, change in zip(files, changes):
+                target = resolve_file(project, item['path'])
+                current = ensure_text(target)
+                if current.count(change['old']) != 1:
+                    raise RuntimeError(
+                        f"{change['file']}: source changed after checkpoint creation"
+                    )
+                atomic_write(target, current.replace(change['old'], change['new'], 1))
 
         checkpoint_event(transaction_id, args.task_id, 'MUTATION',
-                         'MUTATION_APPLIED', {'files': [f['path'] for f in files]})
+                         'MUTATION_APPLIED' if not verify_only else 'VERIFY_ONLY',
+                         {'files': [f['path'] for f in files],
+                          'verify_only': verify_only})
         mutation_test = run_gateway(args.project, args.operation, args.task_id)
         tx['details']['mutation_test'] = mutation_test
         tx['mutation_test_ok'] = gateway_ok(mutation_test)
@@ -731,13 +739,17 @@ def run_transaction():
         scope_ok, extras = _diff_scope_ok(
             [f['path'] for f in files], actual_changed
         )
-        intended_ok = all(
-            post_shas[f['path']] != f['baseline_sha256'] for f in files
-        )
+        if verify_only:
+            intended_ok = True
+        else:
+            intended_ok = all(
+                post_shas[f['path']] != f['baseline_sha256'] for f in files
+            )
         tx['details']['verification_scope'] = {
             'scope_ok': scope_ok,
             'extras': extras,
             'intended_ok': intended_ok,
+            'verify_only': verify_only,
         }
 
         if tx['mutation_test_ok'] and scope_ok and intended_ok:

@@ -459,6 +459,22 @@ def _start_ready_tasks(db, goal_id, *, max_tasks=1):
         engine = _load("anu-task-engine-v0.5.3.py", "anu_task_engine_v090")
     except FileNotFoundError:
         return {"started": started, "reason": "task_engine_missing"}
+    goal_row = db.execute(
+        "SELECT description FROM goals WHERE id = ?",
+        (int(goal_id),),
+    ).fetchone()
+    goal_text = ""
+    if goal_row is not None:
+        goal_text = (
+            goal_row["description"]
+            if isinstance(goal_row, sqlite3.Row)
+            else goal_row[0]
+        ) or ""
+    try:
+        gen = _load("anu-change-generator-v0.1.py", "anu_gen_ctrl_v090")
+    except FileNotFoundError:
+        gen = None
+
     for task in ready[: max(1, int(max_tasks))]:
         tid = task["id"]
         row = db.execute(
@@ -474,6 +490,25 @@ def _start_ready_tasks(db, goal_id, *, max_tasks=1):
             )
         else:
             project, changes_file, operation = row[0], row[1], row[2]
+        if gen is not None:
+            try:
+                title = task.get("title") if isinstance(task, dict) else None
+                if not title:
+                    trow = db.execute(
+                        "SELECT title FROM tasks WHERE id = ?", (tid,)
+                    ).fetchone()
+                    if trow is not None:
+                        title = (
+                            trow["title"]
+                            if isinstance(trow, sqlite3.Row)
+                            else trow[0]
+                        )
+                role = gen.role_from_task_title(title)
+                gen.prepare_for_task(
+                    project, role, goal_text, filename=changes_file
+                )
+            except Exception:
+                pass
         try:
             payload, code = engine.start_task(
                 tid, project, changes_file, operation

@@ -218,6 +218,17 @@ def assign_goal(
     key = pi.require_registered(project_key, config)
     row = pi.ensure_project_row(db, key, config=config)
     project_id = row["id"] if isinstance(row, dict) else row[0]
+    # Reject placeholder goals (e.g. literal "…" copied from docs).
+    try:
+        gen = _load("anu-change-generator-v0.1.py", "anu_gen_assign")
+        if gen.is_placeholder_goal(description):
+            raise ValueError(
+                "goal description is empty or a placeholder; "
+                "pass a real objective (e.g. 'Build a todo list with tests')"
+            )
+    except FileNotFoundError:
+        if not (description or "").strip():
+            raise ValueError("goal description must be non-empty")
     goal = goals.create_goal(db, description, project_id=project_id)
     autonomy_meta = None
     if autonomous or objective or criteria is not None:

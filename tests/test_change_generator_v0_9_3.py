@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +55,35 @@ class TestChangeGenerator(unittest.TestCase):
             result = self.gen.generate_todo_list_changes("demo")
             self.assertTrue(result["ok"])
             self.assertTrue(Path(result["path"]).is_file())
+
+    def test_todo_idempotent_after_apply(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.gen.WORKSPACE = Path(td)
+            first = self.gen.generate_todo_list_changes("demo")
+            self.assertEqual(first["mode"], "apply")
+            # Simulate successful apply: write desired content.
+            root = Path(td) / "demo"
+            desired_todo, desired_test = self.gen._todo_sources()
+            (root / "todo.py").write_text(desired_todo, encoding="utf-8")
+            (root / "test_todo.py").write_text(desired_test, encoding="utf-8")
+            second = self.gen.generate_todo_list_changes("demo")
+            self.assertEqual(second["mode"], "noop")
+            doc = json.loads(Path(second["path"]).read_text(encoding="utf-8"))
+            self.assertTrue(all(e["old"] == e["new"] for e in doc))
+
+    def test_prepare_inspect_is_noop(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.gen.WORKSPACE = Path(td)
+            root = Path(td) / "demo"
+            root.mkdir()
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            out = self.gen.prepare_for_task("demo", "inspect", "anything")
+            self.assertEqual(out["mode"], "noop")
+
+    def test_placeholder_goal(self):
+        self.assertTrue(self.gen.is_placeholder_goal("…"))
+        self.assertTrue(self.gen.is_placeholder_goal("..."))
+        self.assertFalse(self.gen.is_placeholder_goal("Build a todo list"))
 
 
 if __name__ == "__main__":

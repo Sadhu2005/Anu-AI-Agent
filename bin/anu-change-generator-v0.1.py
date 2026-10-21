@@ -16,6 +16,14 @@ DEFAULT_CHANGES = ".anu-changes.json"
 MAX_FILES = 20
 MAX_LINES_PER_FILE = 400
 
+IMPLEMENT_ROLES = frozenset({"implement", "fix", "apply", "propose"})
+VERIFY_ROLES = frozenset({
+    "inspect", "test", "review", "verify", "design", "research", "identify",
+})
+
+_PLACEHOLDER_GOAL = re.compile(r"^[\s.…·•\-_]*$")
+_TODO_HINT = re.compile(r"\b(todo|to-?do|checklist|task.?list)\b", re.I)
+
 
 def validate_changes(doc, *, project_root=None):
     """Validate Safe Mutation changes: a JSON array of {file, old, new}.
@@ -95,6 +103,7 @@ def write_changes_file(project_key, doc, *, filename=DEFAULT_CHANGES, root=None)
     project.mkdir(parents=True, exist_ok=True)
     validated = validate_changes(doc, project_root=project)
     # Seed stubs so create-via-replace works (engine requires file + 1 match).
+    # Never overwrite an existing file with a stub — that would destroy work.
     for entry in validated["files"]:
         target = project / entry["file"]
         if not target.exists():
@@ -109,8 +118,7 @@ def write_changes_file(project_key, doc, *, filename=DEFAULT_CHANGES, root=None)
     return {"ok": True, "path": str(path), "file_count": len(payload)}
 
 
-def generate_todo_list_changes(project_key):
-    """Deterministic fallback generator for the classic todo-list goal."""
+def _todo_sources():
     todo = (
         "#!/usr/bin/env python3\n"
         "\"\"\"Simple in-memory todo list.\"\"\"\n\n"
@@ -139,11 +147,121 @@ def generate_todo_list_changes(project_key):
         "if __name__ == '__main__':\n"
         "    unittest.main()\n"
     )
+    return todo, test
+
+
+def _entry_for_desired(project: Path, rel: str, desired: str) -> dict:
+    """Build {file,old,new} that applies cleanly against the current tree.
+
+    - Missing file → seed stub as old, new = desired
+    - Already matches desired → noop (old == new == current)
+    - Differs → full-file replace (old = current, new = desired)
+    """
+    target = project / rel
+    stub = f"# ANU_STUB_{Path(rel).name}\n"
+    if not target.exists():
+        return {"file": rel, "old": stub, "new": desired}
+    current = target.read_text(encoding="utf-8")
+    if current == desired:
+        return {"file": rel, "old": current, "new": current}
+    return {"file": rel, "old": current, "new": desired}
+
+
+def ensure_noop_changes(project_key, *, filename=DEFAULT_CHANGES, root=None):
+    """Write identity changes so inspect/test/verify stages can COMMIT."""
+    project = Path(root) if root else (WORKSPACE / project_key)
+    project.mkdir(parents=True, exist_ok=True)
+    candidates = ["app.py", "todo.py", "README.md", "main.py"]
+    chosen = None
+    for name in candidates:
+        path = project / name
+        if path.is_file():
+            chosen = name
+            break
+    if chosen is None:
+        # Create a tiny marker the mutation engine can "apply" as a noop.
+        chosen = ".anu-verify-marker"
+        marker = project / chosen
+        if not marker.exists():
+            marker.write_text("# anu verify marker\n", encoding="utf-8")
+    text = (project / chosen).read_text(encoding="utf-8")
+    doc = [{"file": chosen, "old": text, "new": text}]
+    result = write_changes_file(project_key, doc, filename=filename, root=project)
+    result["mode"] = "noop"
+    result["file"] = chosen
+    return result
+
+
+def generate_todo_list_changes(project_key, *, filename=DEFAULT_CHANGES, root=None):
+    """Deterministic fallback generator for the classic todo-list goal.
+
+    Idempotent: re-running against an already-implemented tree writes noops
+    (or full-file replaces if content drifted), never stale stub ``old`` values.
+    """
+    project = Path(root) if root else (WORKSPACE / project_key)
+    todo, test = _todo_sources()
     doc = [
-        {"file": "todo.py", "old": "# ANU_STUB_todo.py\n", "new": todo},
-        {"file": "test_todo.py", "old": "# ANU_STUB_test_todo.py\n", "new": test},
+        _entry_for_desired(project, "todo.py", todo),
+        _entry_for_desired(project, "test_todo.py", test),
     ]
-    return write_changes_file(project_key, doc)
+    result = write_changes_file(project_key, doc, filename=filename, root=project)
+    result["mode"] = (
+        "noop" if all(e["old"] == e["new"] for e in doc) else "apply"
+    )
+    return result
+
+
+def role_from_task_title(title: str | None) -> str:
+    """Extract stage role from titles like ``software_goal:implement``."""
+    if not title or not isinstance(title, str):
+        return ""
+    if ":" in title:
+        return title.rsplit(":", 1)[-1].strip().lower()
+    return title.strip().lower()
+
+
+def wants_todo_goal(goal_description: str | None) -> bool:
+    text = (goal_description or "").strip()
+    if not text:
+        return False
+    return bool(_TODO_HINT.search(text))
+
+
+def is_placeholder_goal(description: str | None) -> bool:
+    text = (description or "").strip()
+    if not text:
+        return True
+    if _PLACEHOLDER_GOAL.match(text):
+        return True
+    if text in {"...", "…", "TBD", "tbd", "TODO", "todo"}:
+        return True
+    return False
+
+
+def prepare_for_task(
+    project_key,
+    role,
+    goal_description="",
+    *,
+    filename=DEFAULT_CHANGES,
+    root=None,
+):
+    """Rewrite the changes file for the upcoming stage role.
+
+    Inspect/test/review/verify → noop against current tree.
+    Implement (todo-shaped or existing todo.py) → idempotent todo generator.
+    Other implement goals without a generator → noop (verify existing tree).
+    """
+    role_l = (role or "").strip().lower()
+    project = Path(root) if root else (WORKSPACE / project_key)
+    if role_l in IMPLEMENT_ROLES:
+        todo_path = project / "todo.py"
+        if wants_todo_goal(goal_description) or todo_path.is_file():
+            return generate_todo_list_changes(
+                project_key, filename=filename, root=project
+            )
+        return ensure_noop_changes(project_key, filename=filename, root=project)
+    return ensure_noop_changes(project_key, filename=filename, root=project)
 
 
 if __name__ == "__main__":
@@ -151,8 +269,20 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--project", required=True)
     p.add_argument("--todo-demo", action="store_true")
+    p.add_argument("--noop", action="store_true")
+    p.add_argument("--role", default="")
+    p.add_argument("--goal", default="")
     args = p.parse_args()
     if args.todo_demo:
         print(json.dumps(generate_todo_list_changes(args.project), indent=2))
+    elif args.noop:
+        print(json.dumps(ensure_noop_changes(args.project), indent=2))
+    elif args.role:
+        print(json.dumps(
+            prepare_for_task(args.project, args.role, args.goal), indent=2
+        ))
     else:
-        print(json.dumps({"ok": False, "error": "provide --todo-demo or use as library"}))
+        print(json.dumps({
+            "ok": False,
+            "error": "provide --todo-demo, --noop, or --role",
+        }))

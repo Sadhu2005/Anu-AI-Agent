@@ -1432,6 +1432,52 @@ def _run_capability_locked(
             pass
 
 
+def _prepare_stage_changes(task_id, project, changes_file, task):
+    """Rewrite changes file for the stage role (inspect=noop, implement=idempotent)."""
+    gen_path = None
+    for candidate in (
+        BASE / "bin" / "anu-change-generator-v0.1.py",
+        _HERE / "anu-change-generator-v0.1.py",
+    ):
+        if candidate.is_file():
+            gen_path = candidate
+            break
+    if gen_path is None:
+        return None
+    spec = importlib.util.spec_from_file_location(
+        "anu_change_generator_engine", gen_path
+    )
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    title = ""
+    goal_text = ""
+    if isinstance(task, dict):
+        title = task.get("title") or ""
+        goal_id = task.get("goal_id")
+    else:
+        title = ""
+        goal_id = None
+    if goal_id is not None:
+        with db_connect() as db:
+            row = db.execute(
+                "SELECT description FROM goals WHERE id = ?",
+                (int(goal_id),),
+            ).fetchone()
+            if row is not None:
+                goal_text = (
+                    row["description"]
+                    if isinstance(row, sqlite3.Row)
+                    else row[0]
+                ) or ""
+    role = gen.role_from_task_title(title)
+    return gen.prepare_for_task(
+        project,
+        role,
+        goal_text,
+        filename=changes_file or gen.DEFAULT_CHANGES,
+    )
+
+
 def start_task(task_id, project, changes_file, operation, *, _chain_depth=0):
     task = fetch_task(task_id)
 
@@ -1467,6 +1513,14 @@ def start_task(task_id, project, changes_file, operation, *, _chain_depth=0):
         raise RuntimeError(
             f"Task {task_id} exceeded MAX_ATTEMPTS={MAX_ATTEMPTS}"
         )
+
+    # V0.9: stage-aware changes rewrite so inspect/test never re-apply stale
+    # implement stubs after a prior successful mutation on the same project.
+    if operation not in CAPABILITY_OPERATIONS:
+        try:
+            _prepare_stage_changes(task_id, project, changes_file, task)
+        except Exception:
+            pass
 
     if operation in CAPABILITY_OPERATIONS:
         return _run_capability_once(

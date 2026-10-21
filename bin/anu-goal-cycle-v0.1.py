@@ -102,6 +102,52 @@ def _require_db(db):
     return db
 
 
+def _prepare_changes_for_candidates(db, goal_id, selected):
+    """Best-effort: stage-aware .anu-changes.json before WAKE."""
+    gen = _load(
+        "anu_change_generator_v090",
+        _HERE / "anu-change-generator-v0.1.py",
+    )
+    goal_row = db.execute(
+        "SELECT description FROM goals WHERE id = ?",
+        (int(goal_id),),
+    ).fetchone()
+    goal_text = ""
+    if goal_row is not None:
+        goal_text = (
+            goal_row["description"]
+            if hasattr(goal_row, "keys")
+            else goal_row[0]
+        ) or ""
+    for item in selected:
+        task_id = item.get("task_id") if isinstance(item, dict) else item[0]
+        trow = db.execute(
+            "SELECT title FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        title = ""
+        if trow is not None:
+            title = trow["title"] if hasattr(trow, "keys") else trow[0]
+        srow = db.execute(
+            """SELECT project, changes_file FROM task_execution_specs
+               WHERE task_id = ?""",
+            (task_id,),
+        ).fetchone()
+        if srow is None:
+            continue
+        project = srow["project"] if hasattr(srow, "keys") else srow[0]
+        changes_file = (
+            srow["changes_file"] if hasattr(srow, "keys") else srow[1]
+        )
+        role = gen.role_from_task_title(title)
+        gen.prepare_for_task(
+            project,
+            role,
+            goal_text,
+            filename=changes_file or gen.DEFAULT_CHANGES,
+        )
+
+
 def start_first_ready_for_goal(db, goal_id, *, max_tasks=1):
     """V0.8.12: after expand, wake the first READY pending task for this goal.
 
@@ -136,6 +182,12 @@ def start_first_ready_for_goal(db, goal_id, *, max_tasks=1):
         }
 
     selected = candidates[:max_tasks]
+    # V0.9: rewrite .anu-changes.json for the stage role so inspect/test do not
+    # re-apply stale implement stubs after a prior successful mutation.
+    try:
+        _prepare_changes_for_candidates(db, goal_id, selected)
+    except Exception:
+        pass
     plan = scheduler.build_ready_task_wake_plan(db, selected)
     handler = scheduler.build_production_agent_wake_execution_handler(db)
     results = scheduler.consume_dependency_wake_plan(

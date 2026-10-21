@@ -238,28 +238,20 @@ def assign_goal(
     expand_result = None
     if expand:
         cycle = _cycle()
-        planner = cycle._load_planner()
-        template = "software_goal" if autonomous else None
-        expand_kwargs = {
-            "db": db,
-            "goal_id": goal["id"],
-            "project": key,
-        }
-        if template and hasattr(planner, "expand_goal"):
-            try:
-                expand_result = planner.expand_goal(
-                    db,
-                    goal["id"],
-                    project=key,
-                    template_name=template,
-                )
-            except TypeError:
-                expand_result = planner.expand_goal(
-                    db,
-                    goal["id"],
-                    project=key,
-                )
+        # V0.9: autonomous goals always use the software_goal template planner.
+        # The LLM planner often emits research-only graphs that never implement.
+        if autonomous:
+            planner = _load(
+                "anu-template-planner-v0.1.py", "anu_template_planner_assign"
+            )
+            expand_result = planner.expand_goal(
+                db,
+                goal["id"],
+                project=key,
+                template_name="software_goal",
+            )
         else:
+            planner = cycle._load_planner()
             expand_result = planner.expand_goal(
                 db,
                 goal["id"],

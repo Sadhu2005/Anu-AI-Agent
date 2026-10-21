@@ -3,7 +3,7 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
-## [V0.9.0] — 2026-10-21 · branch `v0.9.0-integration` (in progress)
+## [V0.9.0] — 2026-10-21 · branch `v0.9.0-integration`
 
 Autonomy foundation + junior-dev controller.
 
@@ -11,7 +11,12 @@ Autonomy foundation + junior-dev controller.
 - Controller CONTINUE / REPLAN / PAUSE / COMPLETE + loop guards
 - Auto-approval policy (all_but_prod), multi-LLM router, dashboard
 - Software-goal planner, git `agent/*` workflow, observability
-- Pack: `run_v0_9_0_regression.py`
+- Pack: `run_v0_9_0_regression.py` (local + Pi `/tmp` clone green)
+- **Pi live:** autonomous goal **16** → fix task **325** `COMMITTED`
+  (`todo.py` + `test_todo.py`, 2 tests OK) → `AUTONOMY_COMPLETE`
+- Fixes: `decided_by=` policy hook; Safe Mutation array changes format;
+  autonomous expand forces `software_goal`; `goal_id` on approvals;
+  skipped deps count as satisfied
 - Docs: [AUTONOMY.md](AUTONOMY.md), [PI-OPS.md](PI-OPS.md), [SECURITY-AUTONOMY.md](SECURITY-AUTONOMY.md)
 
 ## [V0.8.13] — 2026-10-21 · tag `v0.8.13`

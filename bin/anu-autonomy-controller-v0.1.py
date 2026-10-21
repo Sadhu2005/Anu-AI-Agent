@@ -178,7 +178,9 @@ def _ready_tasks(db, goal_id):
                 ok = False
                 break
             dep_status = (dep_row[0] if not isinstance(dep_row, sqlite3.Row) else dep_row["status"] or "").lower()
-            if dep_status not in ("completed", "complete", "committed", "done"):
+            if dep_status not in (
+                "completed", "complete", "committed", "done", "skipped"
+            ):
                 ok = False
                 break
         if ok and status in ("pending", "ready", "queued"):
@@ -197,11 +199,11 @@ def _all_complete(tasks):
 
 
 def _has_failed(tasks):
+    """Only count failures that still block the goal (ignore superseded blocks)."""
     failed = []
     for task in tasks:
-        if str(task.get("status") or "").lower() in (
-            "failed", "error", "rolled_back", "blocked", "rejected"
-        ):
+        status = str(task.get("status") or "").lower()
+        if status in ("failed", "error", "rolled_back", "blocked", "rejected"):
             failed.append(task)
     return failed
 
@@ -318,6 +320,14 @@ def decide(db, goal_id, *, config=None, guardian_data=None, last_failure=None):
                 "detail": {"task_count": len(tasks)},
             }
 
+    ready = _ready_tasks(db, goal_id)
+    if ready:
+        return {
+            "decision": DECIDE_CONTINUE,
+            "reason": "ready_tasks",
+            "detail": {"ready": [t["id"] for t in ready]},
+        }
+
     failed = _has_failed(tasks)
     if failed:
         task = failed[-1]
@@ -355,14 +365,6 @@ def decide(db, goal_id, *, config=None, guardian_data=None, last_failure=None):
             "decision": DECIDE_REPLAN,
             "reason": "task_failed",
             "detail": {"task_id": task.get("id"), "fingerprint": fp, "count": count},
-        }
-
-    ready = _ready_tasks(db, goal_id)
-    if ready:
-        return {
-            "decision": DECIDE_CONTINUE,
-            "reason": "ready_tasks",
-            "detail": {"ready": [t["id"] for t in ready]},
         }
 
     # No ready tasks, not all complete — likely waiting on deps or approval.
@@ -429,23 +431,67 @@ def _project_key_for_goal(db, goal_id):
 
 
 def _start_ready_tasks(db, goal_id, *, max_tasks=1):
-    """Best-effort: wake first ready tasks via goal-cycle helper if present."""
+    """Best-effort: wake first ready tasks via goal-cycle, else task engine."""
     started = []
     try:
         cycle = _load("anu-goal-cycle-v0.1.py", "anu_goal_cycle_v090")
     except FileNotFoundError:
-        return {"started": started, "reason": "goal_cycle_missing"}
-    for _ in range(max(1, int(max_tasks))):
-        try:
-            result = cycle.start_first_ready_for_goal(db, goal_id, max_tasks=1)
-        except TypeError:
-            result = cycle.start_first_ready_for_goal(db, goal_id)
-        except Exception as exc:
-            return {"started": started, "error": f"{type(exc).__name__}: {exc}"}
-        if isinstance(result, dict) and result.get("started"):
-            started.append(result)
+        cycle = None
+    if cycle is not None:
+        for _ in range(max(1, int(max_tasks))):
+            try:
+                result = cycle.start_first_ready_for_goal(db, goal_id, max_tasks=1)
+            except TypeError:
+                result = cycle.start_first_ready_for_goal(db, goal_id)
+            except Exception as exc:
+                return {"started": started, "error": f"{type(exc).__name__}: {exc}"}
+            if isinstance(result, dict) and result.get("started"):
+                started.append(result)
+            else:
+                break
+    if started:
+        return {"started": started}
+    # Fallback: scheduler discover may miss skipped-dep chains; start directly.
+    ready = _ready_tasks(db, goal_id)
+    if not ready:
+        return {"started": started, "reason": "no_ready_task"}
+    try:
+        engine = _load("anu-task-engine-v0.5.3.py", "anu_task_engine_v090")
+    except FileNotFoundError:
+        return {"started": started, "reason": "task_engine_missing"}
+    for task in ready[: max(1, int(max_tasks))]:
+        tid = task["id"]
+        row = db.execute(
+            """SELECT project, changes_file, operation
+               FROM task_execution_specs WHERE task_id = ?""",
+            (tid,),
+        ).fetchone()
+        if row is None:
+            continue
+        if isinstance(row, sqlite3.Row):
+            project, changes_file, operation = (
+                row["project"], row["changes_file"], row["operation"]
+            )
         else:
-            break
+            project, changes_file, operation = row[0], row[1], row[2]
+        try:
+            payload, code = engine.start_task(
+                tid, project, changes_file, operation
+            )
+            started.append({
+                "started": True,
+                "goal_id": goal_id,
+                "task_ids": [tid],
+                "exit_code": code,
+                "result": payload,
+                "via": "task_engine_fallback",
+            })
+        except Exception as exc:
+            started.append({
+                "started": False,
+                "task_id": tid,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
     return {"started": started}
 
 

@@ -1241,10 +1241,22 @@ def _run_capability_locked(
 
         existing = approval_mod.has_valid_approval(db, task_id, operation)
         if existing is None:
+            # V0.9: pass goal_id so auto-approval policy can see autonomous goals.
+            goal_id = None
+            try:
+                row = db.execute(
+                    "SELECT goal_id FROM tasks WHERE id = ?",
+                    (task_id,),
+                ).fetchone()
+                if row is not None:
+                    goal_id = row[0] if not hasattr(row, "keys") else row["goal_id"]
+            except Exception:
+                goal_id = None
             rec = approval_mod.request_approval(
                 db,
                 action=operation,
                 task_id=task_id,
+                goal_id=goal_id,
                 reason=f"capability_operation:{operation}",
                 put_task_waiting=True,
             )
@@ -1317,10 +1329,21 @@ def _run_capability_locked(
 
         decision = result.get("decision") or {}
         if decision.get("denial_class") == "approval":
+            goal_id = None
+            try:
+                row = db.execute(
+                    "SELECT goal_id FROM tasks WHERE id = ?",
+                    (task_id,),
+                ).fetchone()
+                if row is not None:
+                    goal_id = row[0] if not hasattr(row, "keys") else row["goal_id"]
+            except Exception:
+                goal_id = None
             rec = approval_mod.request_approval(
                 db,
                 action=operation,
                 task_id=task_id,
+                goal_id=goal_id,
                 reason=decision.get("reason") or "approval",
                 put_task_waiting=True,
             )

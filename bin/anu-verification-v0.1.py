@@ -603,15 +603,17 @@ def evaluate_mutation_attempt(
     verify_only = bool(details.get("verify_only"))
     # On ALREADY_COMMITTED / COMMITTED without digests, treat intended as
     # satisfied only when mutation reported success (Safe Mutation applied).
-    # V0.9 verify-only (old==new) stages intentionally leave digests unchanged.
-    if verify_only and status in MUTATION_COMMITTED:
+    # V0.9 verify-only / ALREADY_COMMITTED often lack after digests (noop or
+    # short-circuit). Prefer integrity_verified over empty digest checks.
+    if status in MUTATION_COMMITTED and (
+        verify_only or status == "ALREADY_COMMITTED"
+    ):
         intended_ok = True
         unchanged = []
-        checkpoint_ok = (
-            check_checkpoint_integrity(digests)
-            if digests
-            else bool(result.get("integrity_verified", True))
-        )
+        if digests and all(d.get("baseline_sha256") for d in digests):
+            checkpoint_ok = check_checkpoint_integrity(digests)
+        else:
+            checkpoint_ok = bool(result.get("integrity_verified", True))
     elif digests and any(d.get("after_sha256") for d in digests):
         intended_ok, unchanged = check_intended_changes(digests)
         checkpoint_ok = check_checkpoint_integrity(digests)

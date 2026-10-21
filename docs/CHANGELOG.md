@@ -10,7 +10,7 @@ Register a repo and assign a goal.
 - Operator CLI: `register` / `assign` / `connect`
 - GitHub clone only for allow-listed owners over HTTPS
 - Pack: `run_v0_8_13_regression.py`
-- Pi: pack **3/3** on `/tmp` clone; live assign needs sudo checkout
+- Pi: pack **3/3**; assign goal **15** on `sandbox-test-project`
 
 ## [V0.8.12] — 2026-10-19 · tag `v0.8.12`
 

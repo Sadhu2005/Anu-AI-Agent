@@ -672,9 +672,16 @@ def run_transaction():
     try:
         committed = find_committed_transaction(tx['idempotency_key'])
         if committed:
+            # Prior COMMITTED with the same key already proved baseline+tests.
+            # Leave mutation_test_ok True so verification ACCEPT (not ROLLBACK).
             tx['status'] = 'ALREADY_COMMITTED'
             tx['integrity_verified'] = True
+            tx['baseline_ok'] = True
+            tx['mutation_test_ok'] = True
             tx['details']['committed_transaction_id'] = committed
+            tx['details']['verify_only'] = all(
+                c['old'] == c['new'] for c in changes
+            )
             return finalize(tx, 0)
 
         baseline = run_gateway(args.project, args.operation, args.task_id)

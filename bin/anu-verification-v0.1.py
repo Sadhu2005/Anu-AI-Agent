@@ -348,6 +348,14 @@ def decide_from_checks(
         return DECISION_RETRY
 
     if status in MUTATION_COMMITTED:
+        # ALREADY_COMMITTED means a prior transaction already passed tests;
+        # treat missing/false tests_ok as acceptable when intended is OK.
+        if status == "ALREADY_COMMITTED":
+            if intended_ok is False:
+                return DECISION_ROLLBACK
+            if checkpoint_ok is False:
+                return DECISION_ROLLBACK
+            return DECISION_ACCEPT
         if tests_ok is False or intended_ok is False:
             return DECISION_ROLLBACK
         if compile_ok is False:

@@ -333,7 +333,7 @@ def auto_decide_approval(db, approval_id, *, config=None):
     if result["decision"] == "approve":
         by = f"policy:{result['rule']}"
         if hasattr(approval, "approve"):
-            approval.approve(db, approval_id, by=by)
+            approval.approve(db, approval_id, decided_by=by)
         else:
             db.execute(
                 """UPDATE approvals SET status='approved', decided_by=?, decided_at=?
@@ -355,7 +355,9 @@ def auto_decide_approval(db, approval_id, *, config=None):
     if result["decision"] == "deny":
         by = f"policy:{result['rule']}"
         if hasattr(approval, "reject"):
-            approval.reject(db, approval_id, by=by, reason=result.get("reason"))
+            approval.reject(
+                db, approval_id, decided_by=by, note=result.get("reason")
+            )
         else:
             db.execute(
                 """UPDATE approvals SET status='rejected', decided_by=?, decided_at=?
@@ -365,7 +367,6 @@ def auto_decide_approval(db, approval_id, *, config=None):
             db.commit()
         try:
             state = _load("anu-autonomy-state-v0.1.py", "anu_state_policy3")
-            ctrl = _load("anu-autonomy-controller-v0.1.py", "anu_ctrl_policy2")
             state.set_control(
                 db, "pause", scope="goal", goal_id=goal_id,
                 reason=result.get("reason"), by_who=by,

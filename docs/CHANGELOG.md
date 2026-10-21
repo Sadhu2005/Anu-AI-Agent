@@ -16,7 +16,9 @@ Autonomy foundation + junior-dev controller.
   (`todo.py` + `test_todo.py`, 2 tests OK) → `AUTONOMY_COMPLETE`
 - Fixes: `decided_by=` policy hook; Safe Mutation array changes format;
   autonomous expand forces `software_goal`; `goal_id` on approvals;
-  skipped deps count as satisfied
+  skipped deps count as satisfied; stage-aware noop changes;
+  verify-only / ALREADY_COMMITTED ACCEPT; COMPLETE stamps checklist evidence
+- Pi live: goals **16 / 18 / 19** autonomous COMPLETE (todo list + tests)
 - Docs: [AUTONOMY.md](AUTONOMY.md), [PI-OPS.md](PI-OPS.md), [SECURITY-AUTONOMY.md](SECURITY-AUTONOMY.md)
 
 ## [V0.8.13] — 2026-10-21 · tag `v0.8.13`

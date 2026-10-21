@@ -342,6 +342,31 @@ def update_checklist_item(db, item_id, *, status=None, evidence=None, commit=Tru
     return list_checklist(db, row["goal_id"] if isinstance(row, sqlite3.Row) else row[1])
 
 
+def complete_pending_checklist(db, goal_id, evidence, *, commit=True):
+    """Mark every pending checklist item done with the same evidence blob.
+
+    Bulk UPDATE so a single bad row cannot leave siblings pending.
+    """
+    db = _require_db(db)
+    migrate(db)
+    evidence = (evidence or "").strip()
+    if not evidence:
+        raise ValueError("checklist done requires non-empty evidence")
+    cur = db.execute(
+        """UPDATE goal_checklist
+           SET status = 'done', evidence = ?, updated_at = ?
+           WHERE goal_id = ? AND status = 'pending'""",
+        (evidence, now_iso(), int(goal_id)),
+    )
+    if commit:
+        db.commit()
+    return {
+        "ok": True,
+        "updated": int(cur.rowcount or 0),
+        "checklist": list_checklist(db, goal_id),
+    }
+
+
 def list_checklist(db, goal_id):
     db = _require_db(db)
     migrate(db)

@@ -131,6 +131,18 @@ class TestAutonomyState(unittest.TestCase):
         items = self.state.list_checklist(self.db, 1)
         self.assertEqual(items[0]["status"], "done")
 
+    def test_complete_pending_checklist_bulk(self):
+        self.state.create_objective(
+            self.db, 2, "Ship", ["a", "b", "c"], autonomous=True
+        )
+        out = self.state.complete_pending_checklist(
+            self.db, 2, "verification_accept=1:tx=mut-x"
+        )
+        self.assertEqual(out["updated"], 3)
+        items = self.state.list_checklist(self.db, 2)
+        self.assertTrue(all(i["status"] == "done" for i in items))
+        self.assertTrue(all((i["evidence"] or "").startswith("verification") for i in items))
+
     def test_progress_atomic_write(self):
         self.state.create_objective(self.db, 1, "Ship todo", autonomous=True)
         with tempfile.TemporaryDirectory() as td:
@@ -205,6 +217,18 @@ class TestAutonomyController(unittest.TestCase):
             )
         d = self.ctrl.decide(self.db, 1, config=self.cfg)
         self.assertEqual(d["decision"], "COMPLETE")
+
+    def test_decide_complete_with_pending_checklist(self):
+        self._add_task("completed")
+        d = self.ctrl.decide(self.db, 1, config=self.cfg)
+        self.assertEqual(d["decision"], "COMPLETE")
+        self.assertEqual(d["reason"], "all_tasks_done_checklist_pending")
+        applied = self.ctrl.apply_decision(self.db, 1, d, config=self.cfg)
+        self.assertEqual(applied["decision"], "COMPLETE")
+        items = self.state.list_checklist(self.db, 1)
+        self.assertTrue(items)
+        self.assertTrue(all(i["status"] == "done" for i in items))
+        self.assertTrue(all((i.get("evidence") or "").strip() for i in items))
 
     def test_fingerprint_limit(self):
         self._add_task("failed", title="boom")

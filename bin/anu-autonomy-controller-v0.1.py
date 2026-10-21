@@ -550,14 +550,61 @@ def _insert_fix_tasks(db, goal_id, failure_detail):
     return {"ok": False, "reason": "insert_fix_tasks_unsupported"}
 
 
-def _mark_checklist_complete_with_evidence(db, goal_id, evidence):
+def _collect_complete_evidence(db, goal_id):
+    """Build short evidence from completed tasks + last ACCEPT verification."""
+    parts = [f"controller_complete:{now_iso()}"]
+    try:
+        rows = db.execute(
+            """SELECT id, title, status FROM tasks
+               WHERE goal_id = ? ORDER BY id""",
+            (int(goal_id),),
+        ).fetchall()
+        done = []
+        for row in rows:
+            tid = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+            title = row["title"] if isinstance(row, sqlite3.Row) else row[1]
+            status = row["status"] if isinstance(row, sqlite3.Row) else row[2]
+            done.append(f"{tid}:{status}:{title}")
+        if done:
+            parts.append("tasks=" + ";".join(done)[:800])
+    except sqlite3.Error:
+        pass
+    try:
+        vrow = db.execute(
+            """SELECT id, decision, transaction_id FROM verification_records
+               WHERE goal_id = ? AND decision = 'ACCEPT'
+               ORDER BY id DESC LIMIT 1""",
+            (int(goal_id),),
+        ).fetchone()
+        if vrow is not None:
+            vid = vrow["id"] if isinstance(vrow, sqlite3.Row) else vrow[0]
+            tx = (
+                vrow["transaction_id"]
+                if isinstance(vrow, sqlite3.Row)
+                else vrow[2]
+            )
+            parts.append(f"verification_accept={vid}:tx={tx}")
+    except sqlite3.Error:
+        pass
+    return " | ".join(parts)
+
+
+def _mark_checklist_complete_with_evidence(db, goal_id, evidence=None):
     state = _state()
+    blob = evidence or _collect_complete_evidence(db, goal_id)
+    if hasattr(state, "complete_pending_checklist"):
+        return state.complete_pending_checklist(db, goal_id, blob)
+    # Fallback for older state module.
     items = state.list_checklist(db, goal_id)
     for item in items:
         if item.get("status") == "pending":
-            state.update_checklist_item(
-                db, item["id"], status="done", evidence=evidence
-            )
+            try:
+                state.update_checklist_item(
+                    db, item["id"], status="done", evidence=blob
+                )
+            except ValueError:
+                continue
+    return {"ok": True, "checklist": items}
 
 
 def apply_decision(db, goal_id, decision_result, *, config=None, project_key=None):
@@ -605,11 +652,21 @@ def apply_decision(db, goal_id, decision_result, *, config=None, project_key=Non
         return {"ok": True, "decision": decision, "reason": reason, "needs_user": True}
 
     if decision == DECIDE_COMPLETE:
-        evidence = f"controller_complete:{now_iso()}:tasks_verified"
+        evidence = _collect_complete_evidence(db, goal_id)
         try:
             _mark_checklist_complete_with_evidence(db, goal_id, evidence)
-        except ValueError:
-            pass
+        except Exception:
+            # Never block COMPLETE on checklist bookkeeping; goal status still flips.
+            try:
+                db.execute(
+                    """UPDATE goal_checklist
+                       SET status = 'done', evidence = ?, updated_at = ?
+                       WHERE goal_id = ? AND status = 'pending'""",
+                    (evidence, now_iso(), int(goal_id)),
+                )
+                db.commit()
+            except sqlite3.Error:
+                pass
         state.emit_autonomy_event(
             db, goal_id, "AUTONOMY_COMPLETE", f"complete: {reason}", detail
         )

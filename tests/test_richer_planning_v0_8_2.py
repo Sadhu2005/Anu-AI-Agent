@@ -104,7 +104,9 @@ def test_template_listed_and_default():
     names = planner.list_templates()
     assert "multi_stage_goal" in names, names
     assert "improve_sandbox" in names, names
-    assert planner.DEFAULT_TEMPLATE == "multi_stage_goal"
+    assert "software_goal" in names, names
+    # V0.9.3+: autonomous build default is software_goal; multi_stage_goal remains.
+    assert planner.DEFAULT_TEMPLATE == "software_goal"
     llm = load(LLM_MOD, "llm_v082")
     assert llm.DEFAULT_FALLBACK_TEMPLATE == "multi_stage_goal"
     assert "research, design, implement, test, verify" in llm.SYSTEM_PROMPT
@@ -119,6 +121,7 @@ def test_multi_stage_expand_roles_and_deps():
             db,
             goal_id=1,
             project="sandbox-test-project",
+            template_name="multi_stage_goal",
             changes_file="changes.json",
             plan_id="plan-multi-1",
         )

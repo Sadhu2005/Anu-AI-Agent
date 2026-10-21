@@ -173,7 +173,7 @@ def add_yaml_project(
         data["projects"] = projects
     if not isinstance(projects, list):
         raise ValueError("projects must be a list")
-    existing = { _entry_key(entry) for entry in projects }
+    existing = {_entry_key(entry) for entry in projects}
     added = key not in existing
     if added:
         projects.append(
@@ -185,11 +185,22 @@ def add_yaml_project(
         )
         if "rules" not in data or not isinstance(data.get("rules"), dict):
             data["rules"] = {"require_explicit_registration": True}
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
-            encoding="utf-8",
-        )
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            # Dashboard runs with ReadOnlyPaths=/srv/anu/config — cannot mutate YAML.
+            # Operator must pre-register projects (or apply config via install scripts).
+            errno = getattr(exc, "errno", None)
+            if errno in (30, 13):  # EROFS, EACCES
+                raise PermissionError(
+                    f"cannot register new project {key!r}: config is read-only "
+                    f"({path}). Add it to anu-projects.yaml on the host, then retry."
+                ) from exc
+            raise
     return {
         "ok": True,
         "project_key": key,

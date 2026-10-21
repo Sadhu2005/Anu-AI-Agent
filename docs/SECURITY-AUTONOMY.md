@@ -27,6 +27,8 @@
 ## Secrets
 
 - No API keys in git (`anu-llm-providers.yaml` uses env / `*_FILE` only)
+- GitHub PAT: `/srv/anu/secrets/github-token` (`root:anu-agent`, mode `640`); wired via `ANU_GITHUB_TOKEN_FILE` in `anu-agent.service.d/lab-github.conf`
+- Lab push drop-in sets `PrivateNetwork=no` + `AF_INET/AF_INET6` so `agent/*` HTTPS push works; still no force-push / default-branch push
 - Log redaction in observability + dashboard log tail
 - Progress file must never contain keys (controller writes checklist text only)
 

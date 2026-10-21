@@ -39,9 +39,11 @@ class TestDashboardHelpers(unittest.TestCase):
 
     def test_index_html_has_tabs(self):
         html = self.dash.INDEX_HTML
-        for tab in ("overview", "goal", "runtime", "approvals", "assign"):
+        for tab in ("overview", "goal", "runtime", "activity", "approvals", "assign"):
             self.assertIn(f'data-tab="{tab}"', html)
             self.assertIn(f'data-panel="{tab}"', html)
+        self.assertIn("/api/activity", html)
+        self.assertIn("activity-stream", html)
         self.assertIn('id="system-panel"', html)
         self.assertIn("resp.goal || resp", html)
         self.assertIn('id="goal-filter"', html)
@@ -77,7 +79,8 @@ class TestDashboardHTTP910(unittest.TestCase):
             );
             CREATE TABLE tasks (
                 id INTEGER PRIMARY KEY, goal_id INTEGER, title TEXT,
-                status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'pending', priority INTEGER DEFAULT 50,
+                attempts INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
@@ -85,6 +88,16 @@ class TestDashboardHTTP910(unittest.TestCase):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_type TEXT, message TEXT, metadata TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP, goal_id INTEGER, task_id INTEGER
+            );
+            CREATE TABLE observations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER, observation_type TEXT, content TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE llm_context (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                goal_id INTEGER, task_id INTEGER, role TEXT, content TEXT,
+                summary TEXT, provider TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE approvals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER, goal_id INTEGER,
@@ -99,6 +112,21 @@ class TestDashboardHTTP910(unittest.TestCase):
             (str(proj_root),),
         )
         db.execute("INSERT INTO goals(id, project_id, description) VALUES (1,1,'todo')")
+        db.execute(
+            "INSERT INTO tasks(id, goal_id, title, status) VALUES (9,1,'llm:research','pending')"
+        )
+        db.execute(
+            """INSERT INTO agent_events(event_type, message, metadata, goal_id, task_id)
+               VALUES ('PLAN_SAVED','plan v1','{}',1,9)"""
+        )
+        db.execute(
+            """INSERT INTO agent_events(event_type, message, metadata, goal_id, task_id)
+               VALUES ('TASK_STATE','running','{}',1,9)"""
+        )
+        db.execute(
+            """INSERT INTO llm_context(goal_id, task_id, role, content)
+               VALUES (1,9,'assistant','I will research greet helpers')"""
+        )
         db.execute(
             """INSERT INTO approvals(task_id, goal_id, action, status, reason)
                VALUES (1,1,'capability_ops','pending','needs research')"""
@@ -164,7 +192,7 @@ class TestDashboardHTTP910(unittest.TestCase):
             html = resp.read().decode("utf-8")
             self.assertEqual(resp.status, 200)
             self.assertIn("text/html", resp.headers.get("Content-Type", ""))
-        for name in ("Overview", "Active Goal", "Runtime", "Approvals", "Assign"):
+        for name in ("Overview", "Active Goal", "Runtime", "Activity", "Approvals", "Assign"):
             self.assertIn(name, html)
         self.assertIn('id="system-panel"', html)
 
@@ -197,6 +225,18 @@ class TestDashboardHTTP910(unittest.TestCase):
         approvals = payload.get("approvals") or []
         self.assertTrue(approvals)
         self.assertIn(" — ", approvals[0].get("label") or "")
+
+    def test_activity_replay_feed(self):
+        code, payload = self._req("/api/activity?goal=1")
+        self.assertEqual(code, 200)
+        self.assertTrue(payload.get("ok"), msg=str(payload))
+        items = payload.get("items") or []
+        self.assertTrue(items)
+        phases = {it.get("phase") for it in items}
+        self.assertTrue(phases & {"planning", "thinking"})
+        kinds = {it.get("kind") for it in items}
+        self.assertIn("PLAN_SAVED", kinds)
+        self.assertTrue(any(str(it.get("kind", "")).startswith("llm:") for it in items))
 
 
 if __name__ == "__main__":

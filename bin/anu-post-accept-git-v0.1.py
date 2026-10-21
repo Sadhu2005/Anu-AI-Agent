@@ -181,8 +181,23 @@ def after_accept(
         return {"ok": False, "error": str(exc), "pause": True}
 
     if commit_res.get("skipped"):
-        # Still try idempotent push of current tip
-        pass
+        # No product files changed (matrix/.anu artifacts are excluded from commits).
+        _audit(
+            db,
+            "GIT_PUSH_SKIP",
+            "nothing_to_commit (no code changes; .anu artifacts not committed)",
+            {"commit": commit_res, "matrix": (matrix_report or {}).get("summary")},
+            goal_id,
+            task_id,
+        )
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "nothing_to_commit",
+            "branch": branch_info.get("branch"),
+            "commit": commit_res,
+            "matrix": (matrix_report or {}).get("summary"),
+        }
 
     try:
         push_res = git_mod.push_agent_branch(root)

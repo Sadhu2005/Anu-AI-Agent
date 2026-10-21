@@ -277,6 +277,146 @@ def list_goals(db, project_id=None, status=None, limit=100):
     return [_row_to_goal(row) for row in rows]
 
 
+def purge_goal(db, goal_id, *, by_who="operator"):
+    """Permanently remove a goal and its brain work/memory (not the git repo).
+
+    Deletes tasks, events, memories, checklist, checkpoints, control rows, etc.
+    Shared project workspace files and remote ``agent/*`` branches are left
+    intact (lab repos are shared across goals) — operator merges/deletes those
+    on GitHub if desired.
+    """
+    db = _require_db(db)
+    goal_id = _validate_goal_id(goal_id)
+    existing = get_goal(db, goal_id)
+    if existing is None:
+        return {"ok": False, "error": "not_found", "goal_id": goal_id}
+
+    try:
+        db.execute("PRAGMA foreign_keys = ON")
+    except sqlite3.Error:
+        pass
+
+    task_ids = [
+        (r[0] if not isinstance(r, sqlite3.Row) else r["id"])
+        for r in db.execute(
+            "SELECT id FROM tasks WHERE goal_id = ?",
+            (goal_id,),
+        ).fetchall()
+    ]
+
+    deleted = {"goal_id": goal_id, "tasks": len(task_ids), "tables": {}}
+    errors = []
+
+    def _run(label, sql, params=()):
+        try:
+            cur = db.execute(sql, params)
+            deleted["tables"][label] = cur.rowcount if cur.rowcount is not None else 0
+        except sqlite3.Error as exc:
+            deleted["tables"][label] = f"skip:{exc}"
+            errors.append(f"{label}: {exc}")
+
+    # Goal-scoped rows that do not depend on task deletion order.
+    for label, sql in (
+        ("wake_conditions_goal", "DELETE FROM wake_conditions WHERE goal_id = ?"),
+        ("agent_events", "DELETE FROM agent_events WHERE goal_id = ?"),
+        ("approvals_goal", "DELETE FROM approvals WHERE goal_id = ?"),
+        ("autonomy_checkpoints", "DELETE FROM autonomy_checkpoints WHERE goal_id = ?"),
+        ("autonomy_runs", "DELETE FROM autonomy_runs WHERE goal_id = ?"),
+        ("failure_fingerprints", "DELETE FROM failure_fingerprints WHERE goal_id = ?"),
+        ("goal_checklist", "DELETE FROM goal_checklist WHERE goal_id = ?"),
+        ("goal_plans", "DELETE FROM goal_plans WHERE goal_id = ?"),
+        ("llm_context", "DELETE FROM llm_context WHERE goal_id = ?"),
+        ("agent_control", "DELETE FROM agent_control WHERE goal_id = ?"),
+    ):
+        _run(label, sql, (goal_id,))
+
+    # Task-scoped children (memories before observations — FK).
+    if task_ids:
+        placeholders = ",".join("?" * len(task_ids))
+        tids = tuple(task_ids)
+        _run(
+            "agent_memories_task",
+            f"DELETE FROM agent_memories WHERE task_id IN ({placeholders})",
+            tids,
+        )
+        _run(
+            "agent_memories_goal",
+            "DELETE FROM agent_memories WHERE goal_id = ?",
+            (goal_id,),
+        )
+        _run(
+            "task_dependencies",
+            f"DELETE FROM task_dependencies WHERE task_id IN ({placeholders}) "
+            f"OR depends_on_task_id IN ({placeholders})",
+            tids + tids,
+        )
+        for label, col_sql in (
+            ("task_execution_specs", f"DELETE FROM task_execution_specs WHERE task_id IN ({placeholders})"),
+            ("verification_records", f"DELETE FROM verification_records WHERE task_id IN ({placeholders})"),
+            ("test_results", f"DELETE FROM test_results WHERE task_id IN ({placeholders})"),
+            ("actions", f"DELETE FROM actions WHERE task_id IN ({placeholders})"),
+            ("errors", f"DELETE FROM errors WHERE task_id IN ({placeholders})"),
+            ("research", f"DELETE FROM research WHERE task_id IN ({placeholders})"),
+            ("commits", f"DELETE FROM commits WHERE task_id IN ({placeholders})"),
+            ("checkpoints", f"DELETE FROM checkpoints WHERE task_id IN ({placeholders})"),
+            ("mutation_transactions", f"DELETE FROM mutation_transactions WHERE task_id IN ({placeholders})"),
+            ("approvals_task", f"DELETE FROM approvals WHERE task_id IN ({placeholders})"),
+            ("wake_conditions_task", f"DELETE FROM wake_conditions WHERE task_id IN ({placeholders})"),
+            ("observations", f"DELETE FROM observations WHERE task_id IN ({placeholders})"),
+        ):
+            _run(label, col_sql, tids)
+        # Break self-FK on parent_task_id before deleting tasks.
+        _run(
+            "clear_parent_task",
+            f"UPDATE tasks SET parent_task_id = NULL WHERE goal_id = ? "
+            f"OR parent_task_id IN ({placeholders})",
+            (goal_id,) + tids,
+        )
+    else:
+        _run(
+            "agent_memories_goal",
+            "DELETE FROM agent_memories WHERE goal_id = ?",
+            (goal_id,),
+        )
+
+    _run("tasks", "DELETE FROM tasks WHERE goal_id = ?", (goal_id,))
+    _run("goals", "DELETE FROM goals WHERE id = ?", (goal_id,))
+
+    still = get_goal(db, goal_id)
+    if still is not None:
+        try:
+            db.rollback()
+        except sqlite3.Error:
+            pass
+        return {
+            "ok": False,
+            "deleted": False,
+            "error": "goal_row_still_present",
+            "goal_id": goal_id,
+            "fk_errors": errors,
+            "counts": deleted,
+        }
+
+    try:
+        db.commit()
+    except sqlite3.Error as exc:
+        try:
+            db.rollback()
+        except sqlite3.Error:
+            pass
+        return {"ok": False, "error": str(exc), "goal_id": goal_id, "partial": deleted}
+
+    return {
+        "ok": True,
+        "deleted": True,
+        "goal_id": goal_id,
+        "by": by_who,
+        "was": existing,
+        "counts": deleted,
+        "note": "Brain work/memory removed. Shared workspace files and GitHub agent/* branches were not deleted.",
+    }
+
+
 def update_goal_status(db, goal_id, status, reason=None, force=False):
     """Set goal status. Returns the updated record.
 

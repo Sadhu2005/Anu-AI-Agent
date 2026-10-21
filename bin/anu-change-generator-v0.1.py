@@ -41,7 +41,12 @@ def stage_prompt(role: str) -> str:
     return STAGE_PROMPTS.get(key, STAGE_PROMPTS["implement"])
 
 _PLACEHOLDER_GOAL = re.compile(r"^[\s.…·•\-_]*$")
-_TODO_HINT = re.compile(r"\b(todo|to-?do|checklist|task.?list)\b", re.I)
+# Match "todo", "TodoList", "todo_list", "to-do", etc. (\\btodo\\b misses TodoList).
+_TODO_HINT = re.compile(
+    r"(?i)(?:\btodo\b|todolist|todo[_\s-]?list|to-dos?|checklist|task[_\s-]?list)"
+)
+_PING_HINT = re.compile(r"\bping\b", re.I)
+_GREET_HINT = re.compile(r"\bgreet\b", re.I)
 
 
 def validate_changes(doc, *, project_root=None):
@@ -190,7 +195,15 @@ def ensure_noop_changes(project_key, *, filename=DEFAULT_CHANGES, root=None):
     """Write identity changes so inspect/test/verify stages can COMMIT."""
     project = Path(root) if root else (WORKSPACE / project_key)
     project.mkdir(parents=True, exist_ok=True)
-    candidates = ["app.py", "todo.py", "README.md", "main.py"]
+    # Prefer real code modules over README so lab repos (src/labapp) verify cleanly.
+    candidates = [
+        "src/labapp/__init__.py",
+        "labapp/__init__.py",
+        "app.py",
+        "todo.py",
+        "main.py",
+        "README.md",
+    ]
     chosen = None
     for name in candidates:
         path = project / name
@@ -228,6 +241,157 @@ def generate_todo_list_changes(project_key, *, filename=DEFAULT_CHANGES, root=No
         "noop" if all(e["old"] == e["new"] for e in doc) else "apply"
     )
     return result
+
+
+def _ping_sources():
+    mod = (
+        '"""Lab ping helper for ANU agent/* demos."""\n\n'
+        "\n"
+        "def ping() -> str:\n"
+        '    """Return a fixed pong token."""\n'
+        '    return "pong"\n'
+    )
+    test = (
+        "import unittest\n\n"
+        "from labapp.ping import ping\n\n"
+        "\n"
+        "class TestPing(unittest.TestCase):\n"
+        "    def test_ping_returns_pong(self):\n"
+        '        self.assertEqual(ping(), "pong")\n\n'
+        "\n"
+        "if __name__ == '__main__':\n"
+        "    unittest.main()\n"
+    )
+    return mod, test
+
+
+def _greet_sources():
+    init = (
+        '"""Minimal lab application package for ANU experiments."""\n\n'
+        '__version__ = "0.1.0"\n\n'
+        "\n"
+        'def greet(name: str = "world") -> str:\n'
+        '    """Return a greeting — seed unit for the test matrix."""\n'
+        '    return f"Hello, {name}!"\n'
+    )
+    test = (
+        "import unittest\n\n"
+        "from labapp import greet\n\n"
+        "\n"
+        "class TestGreet(unittest.TestCase):\n"
+        "    def test_greet_default(self):\n"
+        '        self.assertEqual(greet(), "Hello, world!")\n\n'
+        "    def test_greet_name(self):\n"
+        '        self.assertEqual(greet("Ada"), "Hello, Ada!")\n\n'
+        "\n"
+        "if __name__ == '__main__':\n"
+        "    unittest.main()\n"
+    )
+    return init, test
+
+
+def generate_ping_changes(project_key, *, filename=DEFAULT_CHANGES, root=None):
+    """Deterministic ping() helper + unit test under src/labapp."""
+    project = Path(root) if root else (WORKSPACE / project_key)
+    mod, test = _ping_sources()
+    doc = [
+        _entry_for_desired(project, "src/labapp/ping.py", mod),
+        _entry_for_desired(project, "tests/unit/test_ping.py", test),
+    ]
+    # Keep package export discoverable when __init__ exists.
+    init_path = project / "src/labapp/__init__.py"
+    if init_path.is_file():
+        current = init_path.read_text(encoding="utf-8")
+        if "ping" not in current:
+            desired = current.rstrip() + "\n\nfrom .ping import ping  # noqa: F401\n"
+            doc.append(_entry_for_desired(project, "src/labapp/__init__.py", desired))
+    result = write_changes_file(project_key, doc, filename=filename, root=project)
+    result["mode"] = (
+        "noop" if all(e["old"] == e["new"] for e in doc) else "apply"
+    )
+    result["helper"] = "ping"
+    return result
+
+
+def generate_greet_changes(project_key, *, filename=DEFAULT_CHANGES, root=None):
+    """Deterministic greet() in labapp + unit test."""
+    project = Path(root) if root else (WORKSPACE / project_key)
+    init, test = _greet_sources()
+    # Preserve ping export if a prior lab goal added it.
+    init_path = project / "src/labapp/__init__.py"
+    if init_path.is_file() and "ping" in init_path.read_text(encoding="utf-8"):
+        if "from .ping import ping" not in init:
+            init = init.rstrip() + "\n\nfrom .ping import ping  # noqa: F401\n"
+    functional = (
+        '"""Functional: greet behaves as a stable public API."""\n\n'
+        "import unittest\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parents[2] / \"src\"))\n\n"
+        "from labapp import greet\n\n"
+        "\n"
+        "class TestGreetFunctional(unittest.TestCase):\n"
+        "    def test_api_contract(self):\n"
+        '        out = greet("lab")\n'
+        '        self.assertTrue(out.startswith("Hello,"))\n'
+        '        self.assertIn("lab", out)\n'
+        '        self.assertTrue(out.endswith("!"))\n\n'
+        "\n"
+        'if __name__ == "__main__":\n'
+        "    unittest.main()\n"
+    )
+    e2e = (
+        '"""E2E smoke for labapp package."""\n\n'
+        "import unittest\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parents[2] / \"src\"))\n\n"
+        "from labapp import greet\n\n"
+        "\n"
+        "class TestE2ESmoke(unittest.TestCase):\n"
+        "    def test_package_smoke(self):\n"
+        '        self.assertEqual(greet("e2e"), "Hello, e2e!")\n\n'
+        "\n"
+        'if __name__ == "__main__":\n'
+        "    unittest.main()\n"
+    )
+    regression = (
+        '"""Regression: prior baseline greetings must stay stable."""\n\n'
+        "import unittest\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parents[2] / \"src\"))\n\n"
+        "from labapp import greet\n\n"
+        "\n"
+        "class TestRegressionBaseline(unittest.TestCase):\n"
+        "    def test_world_still_works(self):\n"
+        '        self.assertEqual(greet(), "Hello, world!")\n\n'
+        "\n"
+        'if __name__ == "__main__":\n'
+        "    unittest.main()\n"
+    )
+    doc = [
+        _entry_for_desired(project, "src/labapp/__init__.py", init),
+        _entry_for_desired(project, "tests/unit/test_greet.py", test),
+        _entry_for_desired(project, "tests/functional/test_greet_api.py", functional),
+        _entry_for_desired(project, "tests/e2e/test_smoke.py", e2e),
+        _entry_for_desired(project, "tests/regression/test_baseline.py", regression),
+    ]
+    result = write_changes_file(project_key, doc, filename=filename, root=project)
+    result["mode"] = (
+        "noop" if all(e["old"] == e["new"] for e in doc) else "apply"
+    )
+    result["helper"] = "greet"
+    return result
+
+
+def wants_ping_goal(goal_description: str | None) -> bool:
+    return bool(_PING_HINT.search((goal_description or "").strip()))
+
+
+def wants_greet_goal(goal_description: str | None) -> bool:
+    text = (goal_description or "").strip()
+    return bool(_GREET_HINT.search(text)) and not wants_ping_goal(text)
 
 
 def role_from_task_title(title: str | None) -> str:
@@ -268,14 +432,26 @@ def prepare_for_task(
     """Rewrite the changes file for the upcoming stage role.
 
     Inspect/test/review/verify → noop against current tree.
-    Implement (todo-shaped or existing todo.py) → idempotent todo generator.
+    Implement (todo / ping / greet lab goals) → deterministic file generators.
     Other implement goals without a generator → noop (verify existing tree).
     """
     role_l = (role or "").strip().lower()
     project = Path(root) if root else (WORKSPACE / project_key)
     if role_l in IMPLEMENT_ROLES:
+        # Match goal text first. Do NOT let a leftover todo.py from an older
+        # lab run hijack ping/greet (or other) implement goals.
+        if wants_ping_goal(goal_description):
+            return generate_ping_changes(
+                project_key, filename=filename, root=project
+            )
+        if wants_greet_goal(goal_description):
+            return generate_greet_changes(
+                project_key, filename=filename, root=project
+            )
         todo_path = project / "todo.py"
-        if wants_todo_goal(goal_description) or todo_path.is_file():
+        if wants_todo_goal(goal_description) or (
+            todo_path.is_file() and not (goal_description or "").strip()
+        ):
             return generate_todo_list_changes(
                 project_key, filename=filename, root=project
             )

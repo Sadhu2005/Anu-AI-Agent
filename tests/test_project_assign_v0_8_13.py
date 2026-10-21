@@ -71,6 +71,14 @@ def test_parse_github_spec():
     assert asg.parse_github_spec(
         "https://github.com/Sadhu2005/todo-app.git"
     ) == ("Sadhu2005", "todo-app")
+    assert asg.parse_github_spec("Sadhu2005/a nu-agent-test") == (
+        "Sadhu2005",
+        "anu-agent-test",
+    )
+    assert asg.parse_github_spec("repo: Sadhu2005/anu-agent-test") == (
+        "Sadhu2005",
+        "anu-agent-test",
+    )
     try:
         asg.parse_github_spec("git@github.com:Sadhu2005/todo-app.git")
     except PermissionError:

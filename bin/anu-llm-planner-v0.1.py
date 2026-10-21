@@ -40,8 +40,9 @@ SYSTEM_PROMPT = (
     "Schema: {\"steps\":[{\"role\":\"short_id\",\"description\":\"one line\","
     "\"operation\":\"python_test\"|\"python_compile\"|\"research\"|\"github\"}]}. "
     "Prefer stage roles research, design, implement, test, verify when applicable. "
-    "1-8 steps. Use research/github only for gather steps; otherwise "
-    "python_test/python_compile. No shell, paths, or commands."
+    "1-8 steps. Rules: research role may use research; design→python_compile; "
+    "implement/test/verify→python_test only; never use github for implement. "
+    "github is gather/read only. No shell, paths, or commands."
 )
 
 RETRY_SYSTEM_PROMPT = (
@@ -337,10 +338,22 @@ def validate_steps(raw, *, max_steps=DEFAULT_MAX_STEPS):
             return False, None, f"step_{index}_bad_description"
         if not isinstance(operation, str) or operation not in ALLOWED_OPERATIONS:
             return False, None, f"step_{index}_bad_operation:{operation!r}"
+        role_l = role.strip().lower()
+        op = operation
+        # Coerce unsafe LLM choices: implement/test/verify must mutate/verify
+        # via sandbox ops — never github mid-build (seen on goal 20 / #346).
+        if role_l in {"implement", "fix", "apply", "propose"} and op in {
+            "github", "research",
+        }:
+            op = "python_test"
+        elif role_l in {"test", "verify", "review"} and op in {"github", "research"}:
+            op = "python_test"
+        elif role_l in {"design", "inspect", "architecture"} and op == "github":
+            op = "python_compile"
         cleaned.append({
             "role": role.strip()[:64],
             "description": description.strip()[:500],
-            "operation": operation,
+            "operation": op,
             "kind": "TASK",
         })
     return True, cleaned, "ok"

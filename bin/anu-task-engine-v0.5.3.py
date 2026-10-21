@@ -876,23 +876,27 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
         )
 
     if final_status == "failed":
+        if outcome is not None and "retryable" in outcome:
+            retryable = bool(outcome["retryable"])
+        else:
+            retryable = attempt < MAX_ATTEMPTS
         retry_after_iso = None
         if retry_after_minutes:
             retry_after_iso = (
                 datetime.now(timezone.utc)
                 + timedelta(minutes=int(retry_after_minutes))
             ).isoformat()
+        # Scheduler only discovers status=pending. Retryable failures must
+        # return to pending with retry_after, otherwise goals stall forever
+        # after the first verification RETRY (seen on goal 20 / task 344).
+        next_status = "pending" if (retryable and attempt < MAX_ATTEMPTS) else "failed"
         update_task(
             task_id,
-            status="failed",
+            status=next_status,
             failure_class=failure_class or FAILURE_CLASSES["ROLLED_BACK"],
-            retry_after=retry_after_iso,
+            retry_after=retry_after_iso if next_status == "pending" else None,
         )
 
-        if outcome is not None and "retryable" in outcome:
-            retryable = bool(outcome["retryable"])
-        else:
-            retryable = attempt < MAX_ATTEMPTS
         event(
             task_id,
             "TASK_FAILED",
@@ -902,6 +906,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
                 "run_id": run_id,
                 "max_attempts": MAX_ATTEMPTS,
                 "retryable": retryable,
+                "next_status": next_status,
                 "failure_class": failure_class or FAILURE_CLASSES["ROLLED_BACK"],
                 "retry_after": retry_after_iso,
                 "recovery_action": recovery_action,
@@ -927,7 +932,7 @@ def _run_mutation_locked(task_id, project, changes_file, operation, attempt, run
             {
                 "ok": False,
                 "task_id": task_id,
-                "task_status": "failed",
+                "task_status": next_status,
                 "attempt": attempt,
                 "run_id": run_id,
                 "retryable": retryable,
@@ -1510,8 +1515,34 @@ def start_task(task_id, project, changes_file, operation, *, _chain_depth=0):
     attempt = int(task["attempts"]) + 1
 
     if attempt > MAX_ATTEMPTS:
-        raise RuntimeError(
-            f"Task {task_id} exceeded MAX_ATTEMPTS={MAX_ATTEMPTS}"
+        # Do not leave exhausted tasks as pending — autonomy would spin forever
+        # on ready_tasks without ever starting work (seen on goal 20 / #344).
+        update_task(
+            task_id,
+            status="failed",
+            failure_class="exhausted",
+            retry_after=None,
+        )
+        event(
+            task_id,
+            "TASK_EXHAUSTED",
+            f"task exceeded MAX_ATTEMPTS={MAX_ATTEMPTS}",
+            {
+                "attempt": int(task["attempts"]),
+                "max_attempts": MAX_ATTEMPTS,
+                "run_id": run_id,
+            },
+        )
+        return (
+            {
+                "ok": False,
+                "task_id": task_id,
+                "task_status": "failed",
+                "attempt": int(task["attempts"]),
+                "retryable": False,
+                "reason": f"exceeded MAX_ATTEMPTS={MAX_ATTEMPTS}",
+            },
+            1,
         )
 
     # V0.9: stage-aware changes rewrite so inspect/test never re-apply stale

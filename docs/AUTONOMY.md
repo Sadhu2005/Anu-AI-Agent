@@ -49,6 +49,18 @@ Ordered layers: **unit → integration → functional → e2e → regression**.
 
 Detector/runner: `bin/anu-test-matrix-v0.1.py`. Diagnose: `bin/anu-failure-diagnose-v0.1.py`.
 
+### What `.anu/` is
+
+Workspace folder for **agent runtime artifacts** (not your product code):
+
+| Path | Meaning |
+|---|---|
+| `.anu/MATRIX_RESULTS.json` | Last test-matrix run (unit→regression) |
+| `.anu/DIAGNOSIS.md` | Written when a matrix layer fails |
+| `.anu/WRITER.lock` | One-writer lock for the workspace |
+
+These are **not** the goal deliverable. Real work must appear as normal source files (e.g. `todo.py`, `src/labapp/ping.py`) on `agent/*`. Matrix-only commits are skipped.
+
 ## Control
 
 ```bash

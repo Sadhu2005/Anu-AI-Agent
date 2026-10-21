@@ -856,25 +856,55 @@ def _collect_actual_changed_files(project_name, task_id, tx):
 
 
 def _parse_git_status_short(stdout):
+    """Parse git status --short; ignore JSON/gateway noise and planner scratch."""
     paths = []
-    if not stdout:
-        return paths
-    for line in str(stdout).splitlines():
-        if not line.strip():
+    text = stdout
+    if isinstance(stdout, dict):
+        text = (
+            stdout.get('stdout')
+            or stdout.get('output')
+            or ((stdout.get('result') or {}) if isinstance(stdout.get('result'), dict) else {}).get('stdout')
+            or ''
+        )
+    text = str(text or '').replace('\\n', '\n').replace('/n', '\n')
+    if text.strip().startswith('{'):
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            return _parse_git_status_short(parsed)
+    for line in text.splitlines():
+        raw = line.strip('\r')
+        if not raw.strip():
             continue
-        body = line[3:] if len(line) >= 3 and line[2] == ' ' else line.strip()
+        if raw.lstrip().startswith(('{', '}', '[', ']', '"', "'")):
+            continue
+        if len(raw) >= 3 and raw[2] == ' ':
+            body = raw[3:]
+        elif raw.startswith('?? '):
+            body = raw[3:]
+        else:
+            continue
         if ' -> ' in body:
             body = body.split(' -> ', 1)[1]
         body = body.strip().strip('"')
-        if body:
-            paths.append(body.replace('\\', '/'))
+        if not body:
+            continue
+        norm = body.replace('\\', '/')
+        base = norm.split('/')[-1]
+        if base in _SCOPE_IGNORE_NAMES or norm in _SCOPE_IGNORE_NAMES:
+            continue
+        paths.append(norm)
     return paths
 
 
-# V0.9: progress file is written by the autonomy controller, not mutations.
+# V0.9: progress / planner scratch files are not mutation scope.
 _SCOPE_IGNORE_NAMES = frozenset({
     'AUTONOMY_PROGRESS.md',
     '.anu-progress.tmp',
+    '.anu-changes.json',
+    '.anu/DIAGNOSIS.md',
 })
 
 

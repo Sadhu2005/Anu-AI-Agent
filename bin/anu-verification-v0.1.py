@@ -254,21 +254,75 @@ def _norm_path(path):
     return text
 
 
+_SCOPE_IGNORE_NAMES = frozenset({
+    "AUTONOMY_PROGRESS.md",
+    ".anu-progress.tmp",
+    ".anu-changes.json",
+    ".anu/DIAGNOSIS.md",
+})
+
+
+def _extract_git_status_text(stdout):
+    """Normalize gateway payloads into raw ``git status --short`` text."""
+    if stdout is None:
+        return ""
+    if isinstance(stdout, dict):
+        for key in ("stdout", "output", "text"):
+            val = stdout.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+        # Nested gateway envelope
+        nested = stdout.get("result") or stdout.get("payload") or {}
+        if isinstance(nested, dict):
+            for key in ("stdout", "output", "text"):
+                val = nested.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val
+        return ""
+    text = str(stdout)
+    stripped = text.strip()
+    if stripped.startswith("{") and ("git_status" in stripped or '"output"' in stripped or '"stdout"' in stripped):
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return _extract_git_status_text(parsed)
+    # Some envelopes store literal \n / /n instead of newlines
+    return text.replace("\\n", "\n").replace("/n", "\n")
+
+
 def parse_git_status_short(stdout):
     """Parse ``git status --short`` into relative path strings."""
     paths = []
-    if not stdout:
+    text = _extract_git_status_text(stdout)
+    if not text:
         return paths
-    for line in str(stdout).splitlines():
-        if not line.strip():
+    for line in text.splitlines():
+        raw = line.strip("\r")
+        if not raw.strip():
             continue
-        # XY PATH or XY ORIG -> PATH (rename)
-        body = line[3:] if len(line) >= 3 and line[2] == " " else line.strip()
+        # Ignore accidental JSON / pretty-print lines (not git status).
+        if raw.lstrip().startswith(("{", "}", "[", "]", '"', "'")):
+            continue
+        # XY PATH or XY ORIG -> PATH (rename). XY are status columns.
+        if len(raw) >= 3 and raw[2] == " ":
+            body = raw[3:]
+        elif raw.startswith("?? "):
+            body = raw[3:]
+        else:
+            # Not a status line — skip (prevents JSON char/line poisoning).
+            continue
         if " -> " in body:
             body = body.split(" -> ", 1)[1]
         body = body.strip().strip('"')
-        if body:
-            paths.append(_norm_path(body))
+        if not body:
+            continue
+        norm = _norm_path(body)
+        base = norm.split("/")[-1]
+        if base in _SCOPE_IGNORE_NAMES or norm in _SCOPE_IGNORE_NAMES:
+            continue
+        paths.append(norm)
     return paths
 
 
@@ -276,6 +330,10 @@ def check_diff_scope(declared_files, actual_changed_files):
     """Return (ok, extras) — extras are paths outside the declared set."""
     declared = {_norm_path(p) for p in (declared_files or []) if p}
     actual = {_norm_path(p) for p in (actual_changed_files or []) if p}
+    actual = {
+        p for p in actual
+        if p not in _SCOPE_IGNORE_NAMES and p.split("/")[-1] not in _SCOPE_IGNORE_NAMES
+    }
     if not actual:
         # No external listing: Safe Mutation only writes declared files.
         return True, []
@@ -753,12 +811,43 @@ def evaluate_mutation_attempt(
                 )
                 if isinstance(record, dict):
                     record["post_accept_git"] = git_out
+                if isinstance(git_out, dict) and not git_out.get("ok"):
+                    try:
+                        db.execute(
+                            """INSERT INTO agent_events
+                               (task_id, goal_id, event_type, message, metadata)
+                               VALUES (?, ?, ?, ?, ?)""",
+                            (
+                                task_id,
+                                goal_id,
+                                "GIT_PUSH_FAIL",
+                                str(git_out.get("error") or "post_accept_failed")[:300],
+                                json.dumps(git_out, default=str)[:4000],
+                            ),
+                        )
+                        db.commit()
+                    except Exception:
+                        pass
             except Exception as exc:
+                err = f"{type(exc).__name__}: {exc}"
                 if isinstance(record, dict):
-                    record["post_accept_git"] = {
-                        "ok": False,
-                        "error": f"{type(exc).__name__}: {exc}",
-                    }
+                    record["post_accept_git"] = {"ok": False, "error": err}
+                try:
+                    db.execute(
+                        """INSERT INTO agent_events
+                           (task_id, goal_id, event_type, message, metadata)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (
+                            task_id,
+                            goal_id,
+                            "GIT_PUSH_FAIL",
+                            err[:300],
+                            json.dumps({"phase": "post_accept_import"}, default=str),
+                        ),
+                    )
+                    db.commit()
+                except Exception:
+                    pass
     return record
 
 

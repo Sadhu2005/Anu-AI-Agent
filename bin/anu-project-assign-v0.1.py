@@ -62,7 +62,10 @@ def _cycle():
 
 
 def parse_github_spec(spec):
-    """Return (owner, repo) from owner/repo or https://github.com/owner/repo."""
+    """Return (owner, repo) from owner/repo or https://github.com/owner/repo.
+
+    Tolerates accidental whitespace and common prefixes (``repo``, ``github``).
+    """
     if not isinstance(spec, str) or not spec.strip():
         raise ValueError("github spec must be a non-empty string")
     raw = spec.strip()
@@ -70,14 +73,44 @@ def parse_github_spec(spec):
         raise PermissionError("ssh remotes are not allowed")
     if raw.startswith("http://"):
         raise PermissionError("only https github.com remotes are allowed")
-    if raw.startswith("https://"):
-        parsed = urlparse(raw)
+    if "://" in raw or raw.lower().startswith("https:"):
+        # Allow broken spacing like "https:// github.com/..."
+        candidate = re.sub(r"\s+", "", raw)
+        if candidate.startswith("http://"):
+            raise PermissionError("only https github.com remotes are allowed")
+        if not candidate.startswith("https://"):
+            raise ValueError(f"invalid github spec: {spec}")
+        parsed = urlparse(candidate)
         if parsed.hostname != "github.com":
             raise PermissionError(f"host not allowed: {parsed.hostname}")
         raw = parsed.path.lstrip("/")
+    else:
+        # Drop labels operators sometimes paste: "repo: Sadhu2005/..."
+        raw = re.sub(
+            r"^(?:github|repo|url|owner\s*/\s*repo)\s*[:=]?\s*",
+            "",
+            raw,
+            flags=re.IGNORECASE,
+        )
+        raw = re.sub(r"\s+", "", raw)
+    raw = raw.strip().strip("/")
+    if raw.lower().endswith(".git"):
+        raw = raw[:-4]
     match = GITHUB_SPEC_RE.fullmatch(raw)
     if not match:
-        raise ValueError(f"invalid github spec: {spec}")
+        # Last resort: find an embedded owner/repo token
+        embedded = re.search(
+            r"([A-Za-z0-9][A-Za-z0-9._-]*)/([A-Za-z0-9][A-Za-z0-9._-]*)",
+            re.sub(r"\s+", "", spec),
+        )
+        if embedded and GITHUB_SPEC_RE.fullmatch(
+            f"{embedded.group(1)}/{embedded.group(2)}"
+        ):
+            return embedded.group(1), embedded.group(2)
+        raise ValueError(
+            "invalid github spec (use owner/repo, e.g. Sadhu2005/anu-agent-test): "
+            f"{spec!r}"
+        )
     return match.group(1), match.group(2)
 
 

@@ -148,6 +148,8 @@ def _task_rows_for_goal(db, goal_id):
 def _ready_tasks(db, goal_id):
     """Tasks that are pending/ready with deps satisfied (best-effort)."""
     tasks = _task_rows_for_goal(db, goal_id)
+    limits = (load_config().get("limits") or {})
+    max_retries = int(limits.get("max_retries_per_task", 3) or 3)
     ready = []
     for task in tasks:
         if str(task.get("status") or "").lower() not in ("pending", "ready", "waiting"):
@@ -159,6 +161,22 @@ def _ready_tasks(db, goal_id):
         if status == "waiting":
             # Waiting on approval — still "ready" for policy to decide.
             ready.append(task)
+            continue
+        # Exhausted attempts must not stay in the ready set (spin loop).
+        try:
+            attempts = int(task.get("attempts") or 0)
+        except (TypeError, ValueError):
+            attempts = 0
+        if attempts >= max_retries and status in ("pending", "ready", "queued"):
+            try:
+                db.execute(
+                    """UPDATE tasks SET status='failed', failure_class='exhausted',
+                       retry_after=NULL, updated_at=? WHERE id=? AND status=?""",
+                    (now_iso(), task["id"], task.get("status")),
+                )
+                db.commit()
+            except Exception:
+                pass
             continue
         tid = task["id"]
         try:
@@ -191,11 +209,19 @@ def _ready_tasks(db, goal_id):
 def _all_complete(tasks):
     if not tasks:
         return False
-    terminal_ok = {"completed", "complete", "committed", "done", "skipped"}
+    # cancelled/exhausted are closed work — do not block goal completion.
+    terminal_ok = {
+        "completed", "complete", "committed", "done", "skipped",
+        "cancelled", "canceled", "exhausted",
+    }
+    meaningful = False
     for task in tasks:
-        if str(task.get("status") or "").lower() not in terminal_ok:
+        status = str(task.get("status") or "").lower()
+        if status not in terminal_ok:
             return False
-    return True
+        if status in ("completed", "complete", "committed", "done", "skipped"):
+            meaningful = True
+    return meaningful
 
 
 def _has_failed(tasks):
@@ -375,20 +401,32 @@ def decide(db, goal_id, *, config=None, guardian_data=None, last_failure=None):
             "detail": {"task_id": task.get("id"), "fingerprint": fp, "count": count},
         }
 
-    # No ready tasks, not all complete — likely waiting on deps or approval.
+    # No ready tasks, not all complete — waiting on deps/approval, or stuck.
     waiting = [t for t in tasks if str(t.get("status") or "").lower() == "waiting"]
-    if waiting:
-        return {
-            "decision": DECIDE_CONTINUE,
-            "reason": "waiting_approval_or_wake",
-            "detail": {"waiting": [t["id"] for t in waiting]},
-        }
-
-    # No-progress: identical pending set hashed across stored marker.
+    running = [
+        t for t in tasks
+        if str(t.get("status") or "").lower() in ("running", "active", "in_progress")
+    ]
     pending_ids = tuple(
         t["id"] for t in tasks
         if str(t.get("status") or "").lower() in ("pending", "ready", "queued")
     )
+    if waiting and not running:
+        return {
+            "decision": DECIDE_WAIT,
+            "reason": "waiting_approval_or_wake",
+            "detail": {"waiting": [t["id"] for t in waiting]},
+        }
+
+    # Work remains but nothing is runnable → pause and ask the operator.
+    if pending_ids and not ready and not waiting and not running:
+        return {
+            "decision": DECIDE_PAUSE,
+            "reason": "stuck_no_ready",
+            "detail": {"pending": list(pending_ids)},
+        }
+
+    # No-progress: identical pending set hashed across stored marker.
     marker = hashlib.sha256(repr(pending_ids).encode()).hexdigest()[:16]
     prev = db.execute(
         """SELECT metadata FROM agent_events
@@ -419,11 +457,65 @@ def decide(db, goal_id, *, config=None, guardian_data=None, last_failure=None):
             "detail": {},
         }
 
+    # Active goal with no runnable work and no pending → treat as stuck for help.
+    if not pending_ids and not waiting and not running:
+        return {
+            "decision": DECIDE_PAUSE,
+            "reason": "operator_stuck",
+            "detail": {"task_count": len(tasks)},
+        }
+
     return {
         "decision": DECIDE_CONTINUE,
         "reason": "idle_poll",
         "detail": {"progress_marker": marker},
     }
+
+
+def _needs_help_message(reason, detail=None) -> str:
+    """Operator-facing pause text when the agent cannot make progress alone."""
+    detail = detail or {}
+    reason = str(reason or "needs_help")
+    templates = {
+        "same_fingerprint_limit": (
+            "Needs help: the same failure keeps repeating. "
+            "Review Activity / DIAGNOSIS, send guidance, then Resume."
+        ),
+        "max_replans": (
+            "Needs help: replan budget exhausted. "
+            "Adjust the goal or send a message, then Resume."
+        ),
+        "no_progress_cycle": (
+            "Needs help: no progress across several cycles "
+            "(tasks pending but nothing advancing). Check blockers, then Resume."
+        ),
+        "stuck_no_ready": (
+            "Needs help: tasks are pending but none are ready to run "
+            "(likely blocked deps). Untangle tasks or send guidance, then Resume."
+        ),
+        "operator_pause": "Paused by operator — state saved. Resume when ready.",
+        "operator_stuck": (
+            "Needs help: goal looks stuck (active, but no running work). "
+            "Inspect Activity, send guidance or Delete, then Resume if continuing."
+        ),
+        "missing_evidence": (
+            "Needs help: checklist items finished without evidence. "
+            "Review the goal, then Resume or Delete."
+        ),
+        "max_iterations": (
+            "Needs help: max iterations reached. Resume only after adjusting the goal."
+        ),
+        "max_wall_hours": (
+            "Needs help: wall-clock time limit reached. Resume when you want to continue."
+        ),
+    }
+    base = templates.get(reason, f"Needs help: {reason.replace('_', ' ')}.")
+    extra = ""
+    if detail.get("task_id") is not None:
+        extra = f" (task #{detail['task_id']})"
+    elif detail.get("pending"):
+        extra = f" (pending tasks: {detail['pending']})"
+    return (base + extra)[:500]
 
 
 def _project_key_for_goal(db, goal_id):
@@ -634,22 +726,68 @@ def apply_decision(db, goal_id, decision_result, *, config=None, project_key=Non
         return {"ok": True, "decision": decision, "reason": reason}
 
     if decision == DECIDE_PAUSE:
+        # Already paused/stopped by control plane — do not re-emit every cycle.
+        if reason in ("agent_control_pause", "agent_control_stop"):
+            return {
+                "ok": True,
+                "decision": decision,
+                "reason": reason,
+                "needs_user": True,
+                "skipped": True,
+            }
+        help_msg = _needs_help_message(reason, detail)
         state.set_control(
             db, "pause", scope="goal", goal_id=goal_id,
-            reason=reason, by_who="controller",
+            reason=help_msg, by_who="controller",
         )
         state.emit_autonomy_event(
-            db, goal_id, "AUTONOMY_PAUSE", f"pause: {reason}", detail
+            db, goal_id, "AUTONOMY_PAUSE", f"pause: {reason}", {
+                **detail,
+                "needs_help": True,
+                "help_message": help_msg,
+            }
         )
         if run:
             state.end_run(db, run["id"], reason, status="paused")
+        try:
+            goals = _load("anu-goal-service-v0.1.py", "anu_goals_v090_pause")
+            goals.update_goal_status(db, goal_id, "blocked", reason=help_msg)
+        except Exception:
+            try:
+                db.execute(
+                    "UPDATE goals SET status = ? WHERE id = ? AND status = ?",
+                    ("blocked", int(goal_id), "active"),
+                )
+                db.commit()
+            except sqlite3.Error:
+                pass
+        try:
+            state.save_checkpoint(
+                db, goal_id,
+                {
+                    "decision": decision,
+                    "reason": reason,
+                    "needs_help": True,
+                    "help_message": help_msg,
+                    "detail": detail,
+                    "at": now_iso(),
+                },
+            )
+        except Exception:
+            pass
         if project_key:
             state.write_progress_file(
                 db, goal_id, project_key,
-                current_task=None,
-                blockers=[f"{reason}: {json.dumps(detail, default=str)[:200]}"],
+                current_task="NEEDS_HELP",
+                blockers=[help_msg],
             )
-        return {"ok": True, "decision": decision, "reason": reason, "needs_user": True}
+        return {
+            "ok": True,
+            "decision": decision,
+            "reason": reason,
+            "needs_user": True,
+            "help_message": help_msg,
+        }
 
     if decision == DECIDE_COMPLETE:
         evidence = _collect_complete_evidence(db, goal_id)

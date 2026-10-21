@@ -209,6 +209,18 @@ def remove_dependency(db, task_id, depends_on_task_id):
     }
 
 
+def _row_as_dict(row, columns):
+    """sqlite3.Row or plain tuple → dict (scheduler DBs often lack row_factory)."""
+    if row is None:
+        return {}
+    if isinstance(row, sqlite3.Row) or hasattr(row, "keys"):
+        try:
+            return dict(row)
+        except TypeError:
+            pass
+    return {columns[i]: row[i] for i in range(min(len(columns), len(row)))}
+
+
 def list_dependencies(db, task_id):
     rows = db.execute("""
         SELECT
@@ -225,7 +237,15 @@ def list_dependencies(db, task_id):
         ORDER BY td.id
     """, (task_id,)).fetchall()
 
-    return [dict(row) for row in rows]
+    cols = (
+        "id",
+        "task_id",
+        "depends_on_task_id",
+        "prerequisite_status",
+        "prerequisite_attempts",
+        "created_at",
+    )
+    return [_row_as_dict(row, cols) for row in rows]
 
 
 def list_dependents(db, prerequisite_task_id):
@@ -242,7 +262,13 @@ def list_dependents(db, prerequisite_task_id):
         ORDER BY td.task_id
     """, (prerequisite_task_id,)).fetchall()
 
-    return [dict(row) for row in rows]
+    cols = (
+        "task_id",
+        "dependent_status",
+        "dependent_attempts",
+        "created_at",
+    )
+    return [_row_as_dict(row, cols) for row in rows]
 
 
 def evaluate_dependents(db, prerequisite_task_id):

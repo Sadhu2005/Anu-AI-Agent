@@ -25,15 +25,20 @@ execution:
   max_output_bytes: 131072
 operations:
   python_test:
-    description: Run Python unittest discovery in sandbox
+    description: Run Python unittest discovery under tests/ (needs package __init__.py)
     image: python@sha256:bb2988715db2cf7ace7b53f38f3cffbef7c7046a656bee66245eb0ed386e2e81
     command:
     - python
     - -m
     - unittest
     - discover
-    - -v
+    - -s
+    - /workspace/tests
+    - -t
     - /workspace
+    - -p
+    - test_*.py
+    - -v
   python_compile:
     description: Compile Python source in memory without writing bytecode
     image: python@sha256:bb2988715db2cf7ace7b53f38f3cffbef7c7046a656bee66245eb0ed386e2e81

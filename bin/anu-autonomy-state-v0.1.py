@@ -663,28 +663,61 @@ def render_progress_markdown(db, goal_id, *, current_task=None, blockers=None, e
     return "\n".join(lines)
 
 
+def _progress_root_for_project(db, project_key):
+    """Prefer projects.workspace when set; else WORKSPACE/<project_key>."""
+    key = str(project_key or "").strip()
+    if key:
+        try:
+            row = db.execute(
+                "SELECT workspace FROM projects WHERE project_key = ?",
+                (key,),
+            ).fetchone()
+            if row is not None:
+                ws = row["workspace"] if isinstance(row, sqlite3.Row) else row[0]
+                if ws:
+                    return Path(str(ws))
+        except sqlite3.Error:
+            pass
+        return WORKSPACE / key
+    return WORKSPACE
+
+
 def write_progress_file(db, goal_id, project_key, *, current_task=None, blockers=None, elapsed=None):
-    """Atomically write AUTONOMY_PROGRESS.md into the project workspace."""
+    """Atomically write AUTONOMY_PROGRESS.md into the project workspace.
+
+    Best-effort: returns None (does not raise) when the workspace is missing
+    or not writable — COMPLETE / CONTINUE must not fail on progress I/O.
+    """
     text = render_progress_markdown(
         db, goal_id, current_task=current_task, blockers=blockers, elapsed=elapsed
     )
-    root = WORKSPACE / project_key
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / PROGRESS_FILENAME
-    fd, tmp_name = tempfile.mkstemp(prefix=".anu-progress-", dir=str(root))
+    root = _progress_root_for_project(db, project_key)
+    tmp_name = None
     try:
+        root.mkdir(parents=True, exist_ok=True)
+        target = root / PROGRESS_FILENAME
+        fd, tmp_name = tempfile.mkstemp(prefix=".anu-progress-", dir=str(root))
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp_name, target)
+        tmp_name = None
+        return str(target)
+    except OSError:
+        if tmp_name:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+        return None
     except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
+        if tmp_name:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
         raise
-    return str(target)
 
 
 def save_checkpoint(db, goal_id, snapshot, *, branch_head=None):

@@ -232,12 +232,85 @@ def record_git_event(db, goal_id, event_type, payload):
         pass
 
 
-def create_pr_gated(*_args, **_kwargs):
-    """PR creation is always gated — never auto."""
+def build_pr_payload(
+    *,
+    title,
+    head_branch,
+    base="main",
+    body=None,
+    matrix_evidence=None,
+    goal_id=None,
+    run_id=None,
+):
+    """Build a reviewable PR payload. Never merges. Never force-pushes."""
+    evidence_lines = []
+    if isinstance(matrix_evidence, dict):
+        for r in matrix_evidence.get("results") or []:
+            evidence_lines.append(
+                f"- {r.get('layer')}: {r.get('status')} ({r.get('reason')})"
+            )
+    elif matrix_evidence:
+        evidence_lines.append(str(matrix_evidence)[:2000])
+    parts = [
+        body or "",
+        "",
+        "## Test matrix evidence",
+        "",
+        *(evidence_lines or ["- (none recorded)"]),
+        "",
+        f"- Goal-Id: {goal_id}" if goal_id is not None else "",
+        f"- Run-Id: {run_id}" if run_id is not None else "",
+        "",
+        "**Human merge only — ANU never auto-merges.**",
+    ]
     return {
-        "ok": False,
-        "needs_approval": True,
-        "reason": "pull_request_requires_user_authorization",
+        "title": str(title or "").strip() or f"agent work ({head_branch})",
+        "head": str(head_branch or "").strip(),
+        "base": str(base or "main").strip(),
+        "body": "\n".join(p for p in parts if p is not None),
+        "draft": True,
+        "auto_merge": False,
+    }
+
+
+def create_pr_gated(
+    *args,
+    approved=False,
+    title=None,
+    head_branch=None,
+    base="main",
+    body=None,
+    matrix_evidence=None,
+    goal_id=None,
+    run_id=None,
+    **kwargs,
+):
+    """PR creation is always gated — never auto-merge. Requires approved=True."""
+    payload = build_pr_payload(
+        title=title,
+        head_branch=head_branch,
+        base=base,
+        body=body,
+        matrix_evidence=matrix_evidence,
+        goal_id=goal_id,
+        run_id=run_id,
+    )
+    if not approved:
+        return {
+            "ok": False,
+            "needs_approval": True,
+            "reason": "pull_request_requires_user_authorization",
+            "payload": payload,
+            "auto_merge": False,
+        }
+    # Even when approved, do not auto-merge; caller must use gh/API separately.
+    return {
+        "ok": True,
+        "needs_approval": False,
+        "created": False,
+        "reason": "payload_ready_human_or_token_create",
+        "payload": payload,
+        "auto_merge": False,
     }
 
 

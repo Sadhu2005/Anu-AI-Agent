@@ -701,6 +701,25 @@ def apply_decision(db, goal_id, decision_result, *, config=None, project_key=Non
         return {"ok": True, "decision": decision, "reason": reason}
 
     if decision == DECIDE_REPLAN:
+        # Attach DIAGNOSIS.md if present (matrix / test failures).
+        try:
+            proj = _project_key_for_goal(db, goal_id)
+            if proj:
+                diag_mod = _load("anu-failure-diagnose-v0.1.py", "anu_diag_ctrl")
+                ws_row = db.execute(
+                    """SELECT workspace FROM projects p
+                       JOIN goals g ON g.project_id = p.id WHERE g.id = ?""",
+                    (int(goal_id),),
+                ).fetchone()
+                ws = None
+                if ws_row is not None:
+                    ws = ws_row[0] if not isinstance(ws_row, sqlite3.Row) else ws_row["workspace"]
+                if ws:
+                    diagnosis = diag_mod.read_diagnosis(ws)
+                    if diagnosis:
+                        detail = {**detail, "diagnosis": diagnosis, "failure_class": diagnosis.get("primary_class")}
+        except Exception:
+            pass
         state.emit_autonomy_event(
             db, goal_id, "AUTONOMY_REPLAN", f"replan: {reason}", detail
         )

@@ -3,6 +3,17 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.9.11–V1.0 lab-repo] — 2026-10-21 · branch `v0.9.0-integration`
+
+Lab-repo autonomy: goal + git target (`anu-agent-test`).
+
+- Assign `--github` + dashboard repo field; project registration
+- Post-ACCEPT matrix → commit → push `agent/*` (`anu-post-accept-git-v0.1.py`)
+- Test matrix + diagnose (`anu-test-matrix-v0.1.py`, `anu-failure-diagnose-v0.1.py`)
+- Workspace writer lock; gated PR payload (never auto-merge)
+- Packs: `test_test_matrix_v0_9_13.py`, `run_lab_unattended_v0_9_15.py`
+- Docs: [AUTONOMY.md](AUTONOMY.md), [LAB-REPO.md](LAB-REPO.md), versions v0.9.11–v1.0
+
 ## [V0.9.0] — 2026-10-21 · branch `v0.9.0-integration`
 
 Autonomy foundation + junior-dev controller.

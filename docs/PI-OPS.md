@@ -72,6 +72,18 @@ curl -sS -H "Authorization: Bearer $ANU_DASHBOARD_TOKEN" http://127.0.0.1:8787/a
 
 Install (once): `bash tools/pi-install-dashboard.sh` on the Pi under `/srv/anu`.
 
+### Lab workspace + GitHub token
+
+```bash
+sudo mkdir -p /srv/anu/workspace/projects/anu-agent-test
+sudo chown anu-agent:anu-agent /srv/anu/workspace/projects/anu-agent-test
+# Token scopes for clone/push agent/* (never commit the token):
+#   contents:read/write on allow-listed repos; no admin; no force-push needed
+# Prefer: ANU_GITHUB_TOKEN_FILE=/srv/anu/secrets/github-token
+```
+
+Demo assign: `bash tools/demo-lab-5task.sh` (on Pi after deploy).
+
 ## Model gateway on Pi
 
 `config/anu-model-gateway.yaml` on the Pi points `base_url` at the PC LAN LM Studio

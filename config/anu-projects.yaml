@@ -3,6 +3,9 @@
 # Unregistered projects must not be planned or mutated.
 
 projects:
+  - key: anu-agent-test
+    name: ANU Agent Test Lab
+    repository: https://github.com/Sadhu2005/anu-agent-test
   - key: sandbox-test-project
     name: Sandbox Test Project
     repository: local

@@ -95,6 +95,15 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | V0.9.7 | Dashboard UI | Single-page monitor | V0.9.6 |
 | V0.9.8 | Checkpoints / resume | Survive reboot mid-goal | V0.9.7 |
 | V0.9.9 | E2E acceptance | Todo-list goal completes unattended | V0.9.8 |
+| [V0.9.10](versions/v0.9.10.md) | Dashboard tabs | Operator console polish | V0.9.9 |
+| [V0.9.11](versions/v0.9.11.md) | Lab bootstrap | `anu-agent-test` + assign goal+repo | V0.9.10 |
+| [V0.9.12](versions/v0.9.12.md) | Step push | ACCEPT → commit → push `agent/*` | V0.9.11 |
+| [V0.9.13](versions/v0.9.13.md) | Test matrix | unit…regression + diagnose | V0.9.12 |
+| [V0.9.14](versions/v0.9.14.md) | Generator stages | multi-file / fix prompts | V0.9.13 |
+| [V0.9.15](versions/v0.9.15.md) | Lab unattended E2E | 5-task no-next pack | V0.9.14 |
+| [V1.0](versions/v1.0.md) | Lab-repo freeze | Gated PR + hardening | V0.9.15 |
+
+**Rejected:** rewriting ANU in TypeScript/Node. Lab target ≠ agent. See [LAB-REPO.md](LAB-REPO.md).
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 

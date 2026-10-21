@@ -40,6 +40,13 @@ def inspect_project(project_key, *, root=None):
         if f in ("app.py", "main.py", "index.js", "src/main.py", "src/index.ts")
         or f.endswith("/app.py")
     ]
+    # Empty lab: only .git / README / ignore scaffolding.
+    meaningful = [
+        f for f in files
+        if not f.startswith(".git")
+        and f not in (".gitignore", "LICENSE", "README.md", "AGENTS.md")
+        and not f.startswith(".github/")
+    ]
     summary = {
         "ok": True,
         "project_key": project_key,
@@ -50,6 +57,8 @@ def inspect_project(project_key, *, root=None):
         "test_command": test_cmd,
         "entry_points": entry_points,
         "has_git": (root / ".git").exists(),
+        "empty_lab": len(meaningful) == 0,
+        "meaningful_file_count": len(meaningful),
     }
     return summary
 

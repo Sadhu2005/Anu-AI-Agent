@@ -736,6 +736,29 @@ def evaluate_mutation_attempt(
         if mem_result and isinstance(record, dict):
             record["memory_id"] = (mem_result.get("memory") or {}).get("id")
             record["observation_id"] = mem_result.get("observation_id")
+        # V0.9.12: after ACCEPT, run matrix → commit → push agent/* (best-effort).
+        if decision == DECISION_ACCEPT and goal_id is not None:
+            try:
+                post = _module_path("anu-post-accept-git-v0.1.py")
+                spec = importlib.util.spec_from_file_location(
+                    "anu_post_accept_git_v", post
+                )
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                git_out = mod.after_accept(
+                    db,
+                    goal_id=goal_id,
+                    task_id=task_id,
+                    message=f"verified task {task_id} attempt {attempt}",
+                )
+                if isinstance(record, dict):
+                    record["post_accept_git"] = git_out
+            except Exception as exc:
+                if isinstance(record, dict):
+                    record["post_accept_git"] = {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
     return record
 
 

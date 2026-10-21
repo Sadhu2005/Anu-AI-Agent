@@ -1,13 +1,21 @@
-# Security notes — V0.9 Autonomy
+# Security notes — V0.9 Autonomy (+ lab-repo)
+
+## Lab-repo model
+
+- ANU pushes only `agent/*`; never `main`, never force-push, never auto-merge
+- Gated PR payloads require human authorization (`create_pr_gated`)
+- One writer lock per workspace (`.anu/WRITER.lock`)
+- Test matrix must exit 0 before claiming pass; failures write `.anu/DIAGNOSIS.md`
 
 ## Auto-approval policy
 
 - Kill switch: `config/anu-autonomy.yaml` → `auto_approve: false`
-- Always-deny classes cannot be overridden by LLM output
+- Always-deny classes cannot be overridden by LLM output (deploy stays human-pending)
 - Policy evaluates capability class independently of planner text (prompt-injection resistant control plane)
 - Secret scan on mutation diffs; protected paths (`.github/workflows/`, `deploy/`, `infra/`)
-- Rate limit on policy approvals per hour
+- Rate limit on policy approvals and pushes per hour
 - GitHub owner allow-list still enforced (`Sadhu2005`)
+- Projects automation needs a separate credential (not default `GITHUB_TOKEN`) if enabled later
 
 ## Dashboard
 

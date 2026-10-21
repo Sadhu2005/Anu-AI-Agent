@@ -28,13 +28,13 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | V0.7.1 in progress; branch **`v0.7.1-integration`** (V0.7.0 frozen) |
-| **Proven** | V0.5.9–V0.7.0; model gateway CLI + Unix socket/client + systemd unit |
-| **Maturity** | V0.7.0 **100%** · V0.7.1 **~40%** |
-| **Next** | Pi install gateway → LM Studio LAN; then planner optional path |
-| **Then** | Freeze `v0.7.1` · V0.8+ per vision |
+| **Version** | **V0.9.x lab-repo autonomy** on branch **`v0.9.0-integration`** |
+| **Proven** | V0.5.9–V0.9.9 Pi autonomous todo goals; V0.9.10 dashboard |
+| **Lab target** | [anu-agent-test](https://github.com/Sadhu2005/anu-agent-test) — ANU commits/pushes here |
+| **Next** | Unattended 5-task lab E2E on Pi · gated PR · V1.0 freeze |
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
+Operator how-to: [docs/AUTONOMY.md](docs/AUTONOMY.md) · Lab model: [docs/LAB-REPO.md](docs/LAB-REPO.md).  
+See [docs/ROADMAP.md](docs/ROADMAP.md) for history. **No TypeScript agent rewrite** — extend this Python/Pi stack.
 
 ## Safety Model in One Screen
 

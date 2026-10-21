@@ -374,10 +374,15 @@ def git_info_for_goal(db, goal_id: int | None) -> dict:
             ["git", "-C", str(root), "status", "--short"],
             capture_output=True, text=True, timeout=8, env=env, check=False,
         )
+        remote = subprocess.run(
+            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=8, env=env, check=False,
+        )
         return {
             "ok": branch.returncode == 0,
             "project_key": key,
             "path": str(root),
+            "remote": (remote.stdout or "").strip() if remote.returncode == 0 else None,
             "branch": (branch.stdout or "").strip() if branch.returncode == 0 else None,
             "head": (head.stdout or "").strip() if head.returncode == 0 else None,
             "log": (log.stdout or "").strip().splitlines(),
@@ -385,6 +390,37 @@ def git_info_for_goal(db, goal_id: int | None) -> dict:
         }
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"ok": False, "error": str(exc), "project_key": key}
+
+
+def matrix_for_goal(db, goal_id: int | None) -> dict:
+    """Best-effort last MATRIX_RESULTS.json or live detect for goal workspace."""
+    if goal_id is None:
+        return {"ok": False, "error": "goal required"}
+    proj = project_for_goal(db, goal_id)
+    if proj is None:
+        return {"ok": False, "error": "goal has no project"}
+    key = proj.get("project_key")
+    root = Path(proj.get("workspace") or "") if proj.get("workspace") else (WORKSPACE / key)
+    if key and not root.is_dir():
+        root = WORKSPACE / key
+    if not root.is_dir():
+        return {"ok": False, "error": f"workspace missing: {root}"}
+    artifact = root / ".anu" / "MATRIX_RESULTS.json"
+    if artifact.is_file():
+        try:
+            data = json.loads(artifact.read_text(encoding="utf-8"))
+            data["ok"] = True
+            data["source"] = "artifact"
+            return data
+        except (OSError, json.JSONDecodeError) as exc:
+            return {"ok": False, "error": str(exc)}
+    try:
+        mod = load_mod("anu-test-matrix-v0.1.py", "anu_matrix_dash")
+        report = mod.detect_matrix(root)
+        report["source"] = "detect"
+        return report
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 def tests_for_goal(db, goal_id: int | None) -> dict:
@@ -734,6 +770,7 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
       <section class="card">
         <h2>Objective</h2>
         <div class="obj" id="goal-objective"></div>
+        <div class="empty" id="goal-workspace"></div>
         <h2>Checklist</h2>
         <div id="checklist-panel" class="list"></div>
       </section>
@@ -762,6 +799,7 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
       <div class="grid" style="gap:.85rem">
         <section class="card"><h2>Git</h2><pre id="git-panel"></pre></section>
         <section class="card"><h2>Tests</h2><div id="tests-panel" class="list"></div></section>
+        <section class="card"><h2>Test matrix</h2><pre id="matrix-panel"></pre></section>
       </div>
     </div>
   </section>
@@ -772,13 +810,16 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
     <section class="card" style="max-width:36rem">
       <h2>New goal</h2>
       <form id="goal-form">
-        <div class="field"><label>project_key</label><input name="project_key" required placeholder="sandbox-test-project"/></div>
-        <div class="field"><label>description</label><input name="description" required placeholder="What should ANU build?"/></div>
+        <div class="field"><label>project_key</label><input name="project_key" required placeholder="anu-agent-test"/></div>
+        <div class="field"><label>github repo (owner/repo or https URL)</label><input name="github" placeholder="Sadhu2005/anu-agent-test"/></div>
+        <div class="field"><label>description (goal)</label><input name="description" required placeholder="What should ANU build?"/></div>
         <div class="field"><label>objective</label><input name="objective" placeholder="Optional longer objective"/></div>
-        <div class="field"><label>criteria (comma-separated)</label><input name="criteria" placeholder="tests pass, confined to workspace"/></div>
+        <div class="field"><label>criteria (comma-separated)</label><input name="criteria" placeholder="unit+integration green; push agent/*"/></div>
         <div class="field"><label><input type="checkbox" name="autonomous" checked/> autonomous</label></div>
+        <div class="field"><label><input type="checkbox" name="clone" checked/> clone if missing</label></div>
         <button type="submit" class="primary">Create goal</button>
       </form>
+      <p class="empty" style="margin-top:.75rem">Lab model: goal + git repo. ANU plans, tests (unit→regression), commits, pushes <code>agent/*</code>. Humans merge.</p>
     </section>
   </section>
 </main>
@@ -941,6 +982,14 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
     const resp = await api("/api/goals/"+gid);
     const g = resp.goal || resp;
     setText(objEl, (g.objective || g.description || "(no objective)") + " · status " + (g.status||"?"));
+    const wsEl = el("goal-workspace");
+    if(wsEl){
+      const bits = [];
+      if(g.workspace) bits.push("workspace: " + g.workspace);
+      if(g.repository) bits.push("repo: " + g.repository);
+      if(g.project_key) bits.push("project: " + g.project_key);
+      setText(wsEl, bits.join(" · ") || "");
+    }
     clear(cl);
     const checklist = g.checklist || [];
     if(!checklist.length) empty(cl, "No checklist items.");
@@ -1018,8 +1067,17 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
     else te.forEach(e=> addLine(tp, (e.created_at||"")+" "+(e.event_type||"")+": "+(e.message||"")));
     const git = await api("/api/git?goal="+gid);
     setText(gp, git.ok
-      ? [(git.branch||"")+" @ "+(git.head||""), ...(git.log||[]), ...(git.status||[])].filter(Boolean).join("\n")
+      ? [(git.branch||"")+" @ "+(git.head||""), "remote: "+(git.remote||"origin"), ...(git.log||[]), ...(git.status||[])].filter(Boolean).join("\n")
       : (git.error || "n/a"));
+    const mp = el("matrix-panel");
+    if(mp){
+      try{
+        const mx = await api("/api/matrix?goal="+gid);
+        setText(mp, mx.ok
+          ? JSON.stringify(mx.summary || mx.results || mx, null, 2)
+          : (mx.error || "n/a"));
+      }catch(err){ setText(mp, String(err.message||err)); }
+    }
   }
   async function refreshApprovals(){
     const appr = await api("/api/approvals");
@@ -1066,6 +1124,8 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
       project_key: fd.get("project_key"),
       description: fd.get("description"),
       objective: fd.get("objective") || undefined,
+      github: (fd.get("github")||"").toString().trim() || undefined,
+      clone: !!fd.get("clone"),
       autonomous: !!fd.get("autonomous")
     };
     if(critRaw) body.criteria = critRaw.split(",").map(s=>s.trim()).filter(Boolean);
@@ -1218,6 +1278,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     json_response(self, HTTPStatus.OK, tests_for_goal(db, gid))
                 finally:
                     db.close()
+            elif path == "/api/matrix":
+                goal = qs.get("goal", [None])[0]
+                db = db_connect()
+                try:
+                    gid = int(goal) if goal else None
+                    json_response(self, HTTPStatus.OK, matrix_for_goal(db, gid))
+                finally:
+                    db.close()
             elif path == "/api/approvals":
                 db = db_connect()
                 try:
@@ -1357,6 +1425,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             obj["control"] = state.effective_control(db, goal_id)
             obj["latest_checkpoint"] = state.latest_checkpoint(db, goal_id)
             obj["progress"] = progress_excerpt_for_goal(db, goal_id)
+            proj = project_for_goal(db, goal_id)
+            if proj:
+                obj["project_key"] = proj.get("project_key")
+                obj["workspace"] = proj.get("workspace")
+                obj["repository"] = proj.get("repository")
             json_response(self, HTTPStatus.OK, {"ok": True, "goal": obj})
         finally:
             db.close()
@@ -1421,13 +1494,38 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def _handle_create_goal(self, body: dict) -> None:
         project_key = str(body.get("project_key") or "").strip()
         description = str(body.get("description") or "").strip()
-        if not project_key or not description:
-            raise ValueError("project_key and description required")
+        github = str(body.get("github") or "").strip() or None
+        if not description:
+            raise ValueError("description required")
+        if not project_key and not github:
+            raise ValueError("project_key or github required")
         objective = str(body.get("objective") or description).strip()
         criteria = body.get("criteria")
         autonomous = bool(body.get("autonomous", True))
+        clone = bool(body.get("clone", True))
         db = db_connect()
         try:
+            if github:
+                # Reject non-allowlisted owners via assign module.
+                assign = load_mod("anu-project-assign-v0.1.py", "anu_assign_dash")
+                crit = criteria
+                if isinstance(crit, str):
+                    crit = [x.strip() for x in crit.split(",") if x.strip()]
+                result = assign.connect_project(
+                    db,
+                    description=description,
+                    project_key=project_key or None,
+                    github=github,
+                    clone=clone,
+                    expand=False,
+                    objective=objective,
+                    criteria=crit,
+                    autonomous=autonomous,
+                )
+                goal = ((result.get("assign") or {}).get("goal")
+                        or (result.get("assign") or {}).get("autonomy"))
+                json_response(self, HTTPStatus.CREATED, {"ok": True, "goal": goal, "result": result})
+                return
             project_id = resolve_project_id(db, project_key)
             cur = db.execute(
                 "INSERT INTO goals(project_id, description, status) VALUES (?, ?, 'pending')",

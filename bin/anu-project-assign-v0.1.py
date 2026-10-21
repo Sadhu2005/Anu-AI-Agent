@@ -355,9 +355,22 @@ def main(argv=None):
     reg.add_argument("--github", help="owner/repo or https://github.com/owner/repo")
     reg.add_argument("--no-clone", action="store_true")
 
-    asg = sub.add_parser("assign")
-    asg.add_argument("--project-key", required=True)
+    asg = sub.add_parser(
+        "assign",
+        help="Assign a goal (optionally with --github for lab-repo clone+goal)",
+    )
+    asg.add_argument(
+        "--project-key",
+        required=False,
+        help="Registered project key (required unless --github is set)",
+    )
     asg.add_argument("--goal", required=True)
+    asg.add_argument(
+        "--github",
+        default=None,
+        help="owner/repo or https URL — clones allow-listed lab target then assigns",
+    )
+    asg.add_argument("--no-clone", action="store_true")
     asg.add_argument("--expand", action="store_true")
     asg.add_argument("--objective", default=None)
     asg.add_argument(
@@ -399,16 +412,34 @@ def main(argv=None):
                 config_path=args.config,
             )
         elif args.cmd == "assign":
-            result = assign_goal(
-                db,
-                args.project_key,
-                args.goal,
-                expand=args.expand,
-                config_path=args.config,
-                objective=args.objective,
-                criteria=criteria,
-                autonomous=args.autonomous,
-            )
+            if args.github:
+                # Lab-repo model: goal + git repo (register/clone + assign).
+                result = connect_project(
+                    db,
+                    description=args.goal,
+                    project_key=args.project_key,
+                    github=args.github,
+                    clone=not args.no_clone,
+                    expand=args.expand,
+                    workspace_root=args.workspace,
+                    config_path=args.config,
+                    objective=args.objective,
+                    criteria=criteria,
+                    autonomous=args.autonomous,
+                )
+            else:
+                if not args.project_key:
+                    raise ValueError("assign requires --project-key or --github")
+                result = assign_goal(
+                    db,
+                    args.project_key,
+                    args.goal,
+                    expand=args.expand,
+                    config_path=args.config,
+                    objective=args.objective,
+                    criteria=criteria,
+                    autonomous=args.autonomous,
+                )
         else:
             result = connect_project(
                 db,

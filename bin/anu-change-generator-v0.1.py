@@ -15,11 +15,30 @@ DEFAULT_CHANGES = ".anu-changes.json"
 
 MAX_FILES = 20
 MAX_LINES_PER_FILE = 400
+# Soft preference for multi-file implement stages (still capped by MAX_FILES).
+PREFERRED_IMPLEMENT_FILES = 3
 
 IMPLEMENT_ROLES = frozenset({"implement", "fix", "apply", "propose"})
 VERIFY_ROLES = frozenset({
     "inspect", "test", "review", "verify", "design", "research", "identify",
+    "architecture", "bootstrap", "env",
 })
+
+STAGE_PROMPTS = {
+    "inspect": "Survey existing files; prefer verify-only or noop changes.",
+    "implement": "Implement a small reviewable change; prefer 1–3 related files.",
+    "fix": "Repair the failing layer using DIAGNOSIS.md targets; minimal diff.",
+    "test": "Add or adjust tests only; do not change production behavior unless required.",
+    "review": "Verify-only preferred; document gaps in evidence text.",
+    "verify": "Verify-only; confirm prior commit digests.",
+    "bootstrap": "Add missing deps/config scaffolding only.",
+    "architecture": "Docs/architecture notes only (no production code unless asked).",
+}
+
+
+def stage_prompt(role: str) -> str:
+    key = str(role or "").strip().lower()
+    return STAGE_PROMPTS.get(key, STAGE_PROMPTS["implement"])
 
 _PLACEHOLDER_GOAL = re.compile(r"^[\s.…·•\-_]*$")
 _TODO_HINT = re.compile(r"\b(todo|to-?do|checklist|task.?list)\b", re.I)

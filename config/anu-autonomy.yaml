@@ -27,6 +27,22 @@ git:
   deny_push_default_branch: true
   deny_force_push: true
   agent_branch_prefix: "agent/"
+  push_after_accept: true
+
+# Lab-repo autonomy: layered gates before push (V0.9.13).
+push_after_accept: true
+test_matrix:
+  timeouts:
+    unit: 120
+    integration: 180
+    functional: 240
+    e2e: 600
+    regression: 600
+  required_layers: []   # empty = run available layers; skip missing
+  by_project_key:
+    anu-agent-test:
+      required_layers: []  # all discovered layers; none hard-required yet
+  retry_budget_per_failure_class: 3
 
 progress_file: "AUTONOMY_PROGRESS.md"
 
@@ -47,6 +63,7 @@ policy:
     - delete
     - new_repo
   rate_limit_approvals_per_hour: 60
+  rate_limit_pushes_per_hour: 30
   protected_paths:
     - ".github/workflows/"
     - "deploy/"

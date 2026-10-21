@@ -89,7 +89,7 @@ the next version.
 | [V0.8.10](versions/v0.8.10.md) | Multi-stage changes path | Frozen · tag `v0.8.10` |
 | [V0.8.11](versions/v0.8.11.md) | Git safe.directory | Frozen · tag `v0.8.11` |
 | [V0.8.12](versions/v0.8.12.md) | Hands-off first stage | Frozen · tag `v0.8.12` |
-| [V0.8.13](versions/v0.8.13.md) | Register + assign | Integration · Pi proven · awaiting freeze |
+| [V0.8.13](versions/v0.8.13.md) | Register + assign | Frozen · tag `v0.8.13` |
 
 ## Working Rules
 

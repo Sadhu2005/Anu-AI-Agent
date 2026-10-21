@@ -84,6 +84,7 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.8.10](versions/v0.8.10.md) | Multi-stage changes path | Project-relative mutation plan after auto-advance | V0.8.9 |
 | [V0.8.11](versions/v0.8.11.md) | Git safe.directory | Sandbox mutations not blocked by parent-repo ownership | V0.8.10 |
 | [V0.8.12](versions/v0.8.12.md) | Hands-off first stage | Expand wakes first READY without manual `run` | V0.8.11 |
+| [V0.8.13](versions/v0.8.13.md) | Register + assign | Point ANU at a repo, then submit a goal | V0.8.12 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -113,8 +114,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.12 (hands-off first stage) is frozen (tag `v0.8.12`).
-Next slice is open — pick from VISION / ROADMAP when ready.
+V0.8.13 (register repo + assign goal) is on `v0.8.13-integration` — pack ready,
+awaiting Pi smoke / freeze.
 
 ## Model gateway (V0.7.1 frozen)
 

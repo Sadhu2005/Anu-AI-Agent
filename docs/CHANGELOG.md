@@ -3,6 +3,14 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.8.13] — 2026-10-21 · integration
+
+Register a repo and assign a goal.
+
+- Operator CLI: `register` / `assign` / `connect`
+- GitHub clone only for allow-listed owners over HTTPS
+- Pack: `run_v0_8_13_regression.py`
+
 ## [V0.8.12] — 2026-10-19 · tag `v0.8.12`
 
 Hands-off first stage after goal expand.

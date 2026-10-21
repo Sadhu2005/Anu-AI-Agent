@@ -150,6 +150,55 @@ def registered_keys(config=None):
     return keys
 
 
+def add_yaml_project(
+    project_key,
+    *,
+    name=None,
+    repository="local",
+    config_path=None,
+):
+    """V0.8.13: append a project to ``anu-projects.yaml`` if missing."""
+    paths = _load("anu-project-paths-v0.1.py", "anu_project_paths_pi")
+    key = paths.validate_project_name(project_key)
+    path = Path(config_path) if config_path else _default_yaml_path()
+    if path.is_file():
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    else:
+        data = {}
+    if not isinstance(data, dict):
+        raise ValueError(f"projects config root must be a mapping: {path}")
+    projects = data.get("projects")
+    if projects is None:
+        projects = []
+        data["projects"] = projects
+    if not isinstance(projects, list):
+        raise ValueError("projects must be a list")
+    existing = { _entry_key(entry) for entry in projects }
+    added = key not in existing
+    if added:
+        projects.append(
+            {
+                "key": key,
+                "name": name or key,
+                "repository": repository or "local",
+            }
+        )
+        if "rules" not in data or not isinstance(data.get("rules"), dict):
+            data["rules"] = {"require_explicit_registration": True}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
+            encoding="utf-8",
+        )
+    return {
+        "ok": True,
+        "project_key": key,
+        "added": added,
+        "path": str(path),
+        "repository": repository or "local",
+    }
+
+
 def require_registered(project_key, config=None):
     """Fail closed when explicit registration is required and key is absent."""
     paths = _load("anu-project-paths-v0.1.py", "anu_project_paths_pi")
@@ -217,10 +266,11 @@ def ensure_project_row(
     repository="local",
     workspace=None,
     status="active",
+    config=None,
 ):
     """Insert Brain projects row if missing (registration must already pass)."""
     db = _require_db(db)
-    key = require_registered(project_key)
+    key = require_registered(project_key, config)
     existing = get_project(db, key)
     if existing is not None:
         return existing

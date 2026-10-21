@@ -392,6 +392,31 @@ def git_info_for_goal(db, goal_id: int | None) -> dict:
         return {"ok": False, "error": str(exc), "project_key": key}
 
 
+def diff_for_goal(db, goal_id: int | None) -> dict:
+    """Best-effort recent mutation / git diff excerpt for Active Goal."""
+    if goal_id is None:
+        return {"ok": False, "error": "goal required"}
+    proj = project_for_goal(db, goal_id)
+    if not proj:
+        return {"ok": False, "error": "no project"}
+    root = Path(proj.get("workspace") or "")
+    key = proj.get("project_key")
+    if not root.is_dir() and key:
+        root = WORKSPACE / key
+    if not root.is_dir():
+        return {"ok": False, "error": "workspace missing"}
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "diff", "HEAD~1", "--stat"],
+            capture_output=True, text=True, timeout=8, env=env, check=False,
+        )
+        text = (proc.stdout or proc.stderr or "").strip()
+        return {"ok": True, "text": text[:8000] or "(no diff)"}
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def matrix_for_goal(db, goal_id: int | None) -> dict:
     """Best-effort last MATRIX_RESULTS.json or live detect for goal workspace."""
     if goal_id is None:
@@ -788,6 +813,12 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
           <div class="field"><label>message</label><textarea name="message" rows="4" required placeholder="Guidance for the agent…"></textarea></div>
           <button type="submit" class="primary">Send</button>
         </form>
+        <div class="actions" style="margin-top:.75rem">
+          <button type="button" id="btn-open-pr">Open PR (gated)</button>
+          <button type="button" id="btn-restore-ckpt">Checkpoint restore (gated)</button>
+        </div>
+        <pre id="task-graph-panel" class="tall" style="margin-top:.5rem"></pre>
+        <pre id="diff-panel" class="tall"></pre>
       </section>
     </div>
   </section>
@@ -1022,8 +1053,25 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
       const span = document.createElement("span");
       setText(span, " #" + t.id + " " + (t.title||"") + (t.attempts!=null ? " · attempts "+t.attempts : ""));
       row.appendChild(span);
+      if(t.evidence || t.title){
+        const link = document.createElement("div");
+        link.className = "mono";
+        setText(link, String(t.evidence||t.title||"").slice(0,160));
+        row.appendChild(link);
+      }
       tl.appendChild(row);
     });
+    const graph = el("task-graph-panel");
+    if(graph){
+      setText(graph, list.map(t=> (t.id+" ["+t.status+"] "+(t.title||""))).join("\n") || "No tasks.");
+    }
+    const diff = el("diff-panel");
+    if(diff){
+      try{
+        const d = await api("/api/diff?goal="+gid);
+        setText(diff, d.text || d.error || "(no recent mutation diff)");
+      }catch(err){ setText(diff, String(err.message||err)); }
+    }
 
     const pr = await api("/api/goals/"+gid+"/progress");
     setText(prog, pr.ok ? (pr.text||"") : (pr.error || "No progress file."));
@@ -1145,6 +1193,18 @@ table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
     await api("/api/goals/"+gid+"/message", {method:"POST", body: JSON.stringify({message: fd.get("message")})});
     e.target.reset();
     alert("Message sent to goal " + gid);
+  };
+  if(el("btn-open-pr")) el("btn-open-pr").onclick=async ()=>{
+    const gid = selectedGoal();
+    if(!gid){ alert("Select a goal first."); return; }
+    const res = await api("/api/pr", {method:"POST", body: JSON.stringify({goal_id: gid})});
+    alert(res.needs_approval ? ("PR gated: "+(res.reason||"needs approval")) : JSON.stringify(res.payload||res));
+  };
+  if(el("btn-restore-ckpt")) el("btn-restore-ckpt").onclick=async ()=>{
+    const gid = selectedGoal();
+    if(!gid){ alert("Select a goal first."); return; }
+    const res = await api("/api/checkpoint/restore", {method:"POST", body: JSON.stringify({goal_id: gid})});
+    alert(res.error || ("restore: "+(res.ok?"queued for human confirm":"n/a")));
   };
   async function tick(){
     try{
@@ -1286,6 +1346,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     json_response(self, HTTPStatus.OK, matrix_for_goal(db, gid))
                 finally:
                     db.close()
+            elif path == "/api/diff":
+                goal = qs.get("goal", [None])[0]
+                db = db_connect()
+                try:
+                    gid = int(goal) if goal else None
+                    json_response(self, HTTPStatus.OK, diff_for_goal(db, gid))
+                finally:
+                    db.close()
             elif path == "/api/approvals":
                 db = db_connect()
                 try:
@@ -1332,6 +1400,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
             elif path == "/api/checkpoint":
                 self._handle_checkpoint(body)
+            elif path == "/api/checkpoint/restore":
+                # Gated: never silent restore — operator must confirm offline.
+                json_response(self, HTTPStatus.OK, {
+                    "ok": False,
+                    "error": "checkpoint_restore_requires_operator_confirm",
+                    "goal_id": body.get("goal_id"),
+                })
+            elif path == "/api/pr":
+                self._handle_pr_gated(body)
             else:
                 json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
         except ValueError as exc:
@@ -1488,6 +1565,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
             else:
                 rec = svc.reject(db, approval_id, decided_by=by, note=note)
             json_response(self, HTTPStatus.OK, {"ok": True, "approval": rec})
+        finally:
+            db.close()
+
+    def _handle_pr_gated(self, body: dict) -> None:
+        """Never auto-merge. Returns gated payload for human/token create."""
+        goal_id = body.get("goal_id")
+        if goal_id is None:
+            raise ValueError("goal_id required")
+        db = db_connect()
+        try:
+            git = load_mod("anu-git-workflow-v0.1.py", "anu_git_dash_pr")
+            info = git_info_for_goal(db, int(goal_id))
+            matrix = matrix_for_goal(db, int(goal_id))
+            out = git.create_pr_gated(
+                approved=False,
+                title=f"ANU goal {goal_id}",
+                head_branch=info.get("branch") or f"agent/{goal_id}-work",
+                matrix_evidence=matrix,
+                goal_id=int(goal_id),
+            )
+            json_response(self, HTTPStatus.OK, out)
         finally:
             db.close()
 

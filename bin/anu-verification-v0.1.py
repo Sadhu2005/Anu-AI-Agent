@@ -591,9 +591,20 @@ def evaluate_mutation_attempt(
     unintended_ok, extras = check_diff_scope(declared, actual_changed_files)
 
     digests = _file_digests_from_mutation(result, declared)
+    details = result.get("details") if isinstance(result.get("details"), dict) else {}
+    verify_only = bool(details.get("verify_only"))
     # On ALREADY_COMMITTED / COMMITTED without digests, treat intended as
     # satisfied only when mutation reported success (Safe Mutation applied).
-    if digests and any(d.get("after_sha256") for d in digests):
+    # V0.9 verify-only (old==new) stages intentionally leave digests unchanged.
+    if verify_only and status in MUTATION_COMMITTED:
+        intended_ok = True
+        unchanged = []
+        checkpoint_ok = (
+            check_checkpoint_integrity(digests)
+            if digests
+            else bool(result.get("integrity_verified", True))
+        )
+    elif digests and any(d.get("after_sha256") for d in digests):
         intended_ok, unchanged = check_intended_changes(digests)
         checkpoint_ok = check_checkpoint_integrity(digests)
     elif status in MUTATION_COMMITTED:

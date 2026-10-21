@@ -852,6 +852,13 @@ def _parse_git_status_short(stdout):
     return paths
 
 
+# V0.9: progress file is written by the autonomy controller, not mutations.
+_SCOPE_IGNORE_NAMES = frozenset({
+    'AUTONOMY_PROGRESS.md',
+    '.anu-progress.tmp',
+})
+
+
 def _diff_scope_ok(declared_files, actual_changed_files):
     if actual_changed_files is None:
         # No listing available (non-git workspace): Safe Mutation only
@@ -861,6 +868,8 @@ def _diff_scope_ok(declared_files, actual_changed_files):
     extras = sorted(
         p for p in actual_changed_files
         if str(p).replace('\\', '/') not in declared
+        and Path(str(p).replace('\\', '/')).name not in _SCOPE_IGNORE_NAMES
+        and not str(p).replace('\\', '/').endswith('AUTONOMY_PROGRESS.md')
     )
     return len(extras) == 0, extras
 

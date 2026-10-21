@@ -36,12 +36,57 @@ ALLOWED_OPERATIONS = frozenset({
 
 # Named templates. Mutation steps use Safe Mutation; research uses the
 # research capability (Task Engine capability path, V0.8.7).
-DEFAULT_TEMPLATE = "multi_stage_goal"
+# V0.9.3: software_goal is the default for autonomous build work.
+DEFAULT_TEMPLATE = "software_goal"
 
 # V0.8.10: project-relative mutation plan (not a CWD-relative bare name).
 DEFAULT_CHANGES_FILE = ".anu-changes.json"
 
+# Build-goal ops that prove an implement stage exists (not research-only).
+BUILD_MUTATION_OPERATIONS = frozenset({
+    "python_test",
+    "python_compile",
+})
+
 TEMPLATES = {
+    # V0.9.3: inspect → implement (mutation via python_test apply path) → test → verify
+    "software_goal": [
+        {
+            "action_id": "inspect",
+            "kind": "TASK",
+            "description": "inspect repo / gather baseline",
+            "operation": "python_compile",
+            "role": "inspect",
+        },
+        {
+            "action_id": "implement",
+            "kind": "TASK",
+            "description": "apply safe code modification",
+            "operation": "python_test",
+            "role": "implement",
+        },
+        {
+            "action_id": "test",
+            "kind": "TASK",
+            "description": "run project tests",
+            "operation": "python_test",
+            "role": "test",
+        },
+        {
+            "action_id": "review",
+            "kind": "TASK",
+            "description": "compile/lint review before done",
+            "operation": "python_compile",
+            "role": "review",
+        },
+        {
+            "action_id": "verify",
+            "kind": "TASK",
+            "description": "verify acceptance criteria",
+            "operation": "python_test",
+            "role": "verify",
+        },
+    ],
     "multi_stage_goal": [
         {
             "action_id": "research",
@@ -190,6 +235,92 @@ def _load_execution_spec():
 
 def list_templates():
     return sorted(TEMPLATES.keys())
+
+
+def validate_plan_steps(steps, *, require_mutation_for_build=True):
+    """Reject research-only plans for software build goals (V0.9.3)."""
+    if not steps:
+        raise ValueError("plan has no steps")
+    ops = []
+    for step in steps:
+        if isinstance(step, dict):
+            op = step.get("operation") or (step.get("parameters") or {}).get("operation")
+        else:
+            op = None
+        ops.append(op)
+    if require_mutation_for_build:
+        if not any(op in BUILD_MUTATION_OPERATIONS for op in ops):
+            raise ValueError(
+                "build plan rejected: no implement/test mutation operation; "
+                f"ops={ops}"
+            )
+        # Research-only is never enough for a build goal.
+        if all(op in ("research", "github", None) for op in ops):
+            raise ValueError("build plan rejected: research-only")
+    return True
+
+
+def repair_weak_plan(steps, *, fallback_template="software_goal"):
+    """Replace a weak LLM plan with the software_goal template steps."""
+    try:
+        validate_plan_steps(steps, require_mutation_for_build=True)
+        return {"repaired": False, "steps": steps, "template": None}
+    except ValueError:
+        return {
+            "repaired": True,
+            "steps": list(TEMPLATES[fallback_template]),
+            "template": fallback_template,
+        }
+
+
+def insert_fix_tasks_for_goal(db, goal_id, failure_detail):
+    """Insert a fix stage task when REPLAN fires (V0.9.4)."""
+    stamp = uuid.uuid4().hex[:8]
+    title = f"software_goal:fix-{stamp}"
+    description = (
+        "fix failing stage: "
+        + json.dumps(failure_detail or {}, default=str)[:500]
+    )
+    task_id = _create_task_row(
+        db,
+        goal_id=int(goal_id),
+        title=title,
+        description=description,
+        priority=1,
+        task_key=f"fix-{stamp}",
+    )
+    spec = _load_execution_spec()
+    # Prefer a registered project key from the goal when available.
+    project = "sandbox-test-project"
+    try:
+        row = db.execute(
+            """SELECT p.project_key FROM goals g
+               JOIN projects p ON p.id = g.project_id WHERE g.id = ?""",
+            (int(goal_id),),
+        ).fetchone()
+        if row is not None:
+            project = row[0] if not isinstance(row, dict) else row["project_key"]
+            if hasattr(row, "keys"):
+                project = row["project_key"] if "project_key" in row.keys() else project
+    except Exception:
+        pass
+    try:
+        spec.upsert_spec(
+            db,
+            task_id,
+            project=project,
+            changes_file=DEFAULT_CHANGES_FILE,
+            operation="python_test",
+        )
+    except Exception:
+        db.execute(
+            """INSERT OR REPLACE INTO task_execution_specs
+               (task_id, project, changes_file, operation, created_at, updated_at)
+               VALUES (?, ?, ?, 'python_test', ?, ?)""",
+            (task_id, project, DEFAULT_CHANGES_FILE, now_iso(), now_iso()),
+        )
+        db.commit()
+    return {"ok": True, "task_id": task_id, "title": title}
 
 
 def build_plan_dict(goal_id, template_name, plan_id=None):

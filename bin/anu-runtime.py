@@ -19,6 +19,7 @@ RECOVERY = BASE / "bin" / "anu-recovery-v0.1.py"
 STARTUP = BASE / "bin" / "anu-startup-recovery-v0.1.py"
 BOUNDARY = BASE / "bin" / "anu-boundary-check-v0.1.py"
 GOAL_CYCLE = BASE / "bin" / "anu-goal-cycle-v0.1.py"
+AUTONOMY = BASE / "bin" / "anu-autonomy-controller-v0.1.py"
 DB_FILE = BASE / "brain" / "anu-brain.db"
 SCHEDULER_LOCK_FILE = BASE / "runtime" / "anu-scheduler.lock"
 EXECUTION_LOCK_FILE = BASE / "runtime" / "anu-execution.lock"
@@ -29,6 +30,8 @@ STATE_FILE = BASE / "runtime" / "anu-state.json"
 
 INTERVAL_SECONDS = 60
 SCHEDULER_MAX_TASKS = 1
+# V0.9: shortened while autonomous goals are active (overridden from config).
+AUTONOMY_INTERVAL_SECONDS = 15
 
 running = True
 recovery_done = False
@@ -380,6 +383,85 @@ def run_goal_sync():
         return {"ok": False, "error": str(exc)}
 
 
+def _load_autonomy():
+    for candidate in (
+        AUTONOMY,
+        _HERE / "anu-autonomy-controller-v0.1.py",
+    ):
+        if not candidate.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location(
+            "anu_autonomy_controller_runtime",
+            candidate,
+        )
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    return None
+
+
+def run_autonomy_controller(guardian_data):
+    """V0.9: CONTINUE / REPLAN / PAUSE / COMPLETE after scheduler tick."""
+    ctrl = _load_autonomy()
+    if ctrl is None:
+        write_log("Autonomy controller skipped: module missing")
+        return {"skipped": True, "reason": "autonomy_missing"}
+    try:
+        db = _open_brain_db()
+        try:
+            result = ctrl.run_controller_once(
+                db, guardian_data=guardian_data
+            )
+            write_log(
+                "Autonomy: results="
+                f"{len(result.get('results') or [])}"
+            )
+            return result
+        finally:
+            db.close()
+    except Exception as exc:
+        write_log(
+            f"Autonomy controller failed: {type(exc).__name__}: {exc}"
+        )
+        return {"ok": False, "error": str(exc)}
+
+
+def _autonomy_active():
+    """True when any autonomous goal is mid-flight (shorten interval)."""
+    ctrl = _load_autonomy()
+    if ctrl is None:
+        return False
+    try:
+        db = _open_brain_db()
+        try:
+            state = ctrl._state()
+            goals = state.list_autonomous_goals(db)
+            for goal in goals:
+                if goal.get("status") not in (
+                    "completed", "cancelled", "failed"
+                ):
+                    return True
+            return False
+        finally:
+            db.close()
+    except Exception:
+        return False
+
+
+def _scheduler_max_tasks():
+    if not _autonomy_active():
+        return SCHEDULER_MAX_TASKS
+    ctrl = _load_autonomy()
+    if ctrl is None:
+        return SCHEDULER_MAX_TASKS
+    try:
+        return int(ctrl.active_autonomy_max_tasks())
+    except Exception:
+        return SCHEDULER_MAX_TASKS
+
+
 def run_agent_scheduler_cycle(guardian_data):
     if not boundary_ok:
         write_log(
@@ -411,7 +493,7 @@ def run_agent_scheduler_cycle(guardian_data):
 
         result = scheduler.run_agent_scheduler_cycle_once(
             db_path=str(DB_FILE),
-            max_tasks=SCHEDULER_MAX_TASKS,
+            max_tasks=_scheduler_max_tasks(),
             lock_path=str(SCHEDULER_LOCK_FILE),
         )
 
@@ -546,6 +628,9 @@ def run_runtime_iteration():
     # V0.7.0: sync goal completion after the schedule/execute tick.
     run_goal_sync()
 
+    # V0.9: autonomy controller owns continuation after the schedule tick.
+    run_autonomy_controller(data)
+
     return schedule_result
 
 
@@ -568,8 +653,21 @@ def main():
 
         run_runtime_iteration()
 
+        # V0.9: shorten sleep while autonomous goals are active.
+        interval = INTERVAL_SECONDS
+        if _autonomy_active():
+            ctrl = _load_autonomy()
+            try:
+                interval = int(
+                    ctrl.active_autonomy_interval()
+                    if ctrl is not None
+                    else AUTONOMY_INTERVAL_SECONDS
+                )
+            except Exception:
+                interval = AUTONOMY_INTERVAL_SECONDS
+
         # Sleep in small chunks so SIGTERM is handled quickly.
-        for _ in range(INTERVAL_SECONDS):
+        for _ in range(max(1, interval)):
 
             if not running:
                 break

@@ -184,6 +184,64 @@ def privacy_allowed(cfg: dict, privacy_class: str | None) -> bool:
     return klass not in forbidden
 
 
+def _try_llm_router(
+    messages: list[dict[str, str]],
+    *,
+    privacy_class: str | None = None,
+    goal_id=None,
+    task_id=None,
+) -> dict[str, Any] | None:
+    """V0.9.2: prefer multi-provider router when configured; else None."""
+    router_path = None
+    for candidate in (
+        BASE / "bin" / "anu-llm-router-v0.1.py",
+        _HERE / "anu-llm-router-v0.1.py",
+        _REPO / "bin" / "anu-llm-router-v0.1.py",
+    ):
+        if candidate.is_file():
+            router_path = candidate
+            break
+    if router_path is None:
+        return None
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "anu_llm_router_gateway",
+            router_path,
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        rcfg = mod.load_config()
+        if not rcfg.get("enabled") or not (rcfg.get("providers") or []):
+            return None
+        db = mod.db_connect()
+        try:
+            result = mod.chat(
+                db,
+                messages=messages,
+                goal_id=goal_id,
+                task_id=task_id,
+                privacy_class=privacy_class or "INTERNAL",
+                config=rcfg,
+            )
+        finally:
+            db.close()
+        return {
+            "ok": True,
+            "provider": result.get("provider") or "llm_router",
+            "base_url": "router",
+            "model": "router",
+            "privacy_class": privacy_class or "INTERNAL",
+            "zero_cost": False,
+            "http_status": 200,
+            "text": result.get("content") or "",
+            "raw": result.get("raw") or result,
+            "via": "llm_router",
+        }
+    except Exception:
+        return None
+
+
 def request_chat(
     cfg: dict,
     *,
@@ -194,21 +252,37 @@ def request_chat(
     privacy_class: str | None = None,
     api_key: str | None = None,
     tool_choice: str | None = None,
+    goal_id=None,
+    task_id=None,
 ) -> dict[str, Any]:
-    """POST /v1/chat/completions. Returns provider JSON + ANU metadata."""
+    """POST /v1/chat/completions. Returns provider JSON + ANU metadata.
+
+    V0.9.2: attempts multi-provider LLM router first; falls back to the
+    single-provider config so older deployments keep working.
+    """
     if not cfg.get("enabled", True):
         raise RuntimeError("model gateway disabled in config")
+    if not messages:
+        raise ValueError("messages must be non-empty")
+    if not privacy_allowed(cfg, privacy_class):
+        raise PermissionError(
+            f"privacy class {privacy_class!r} must not leave the Pi"
+        )
+
+    routed = _try_llm_router(
+        messages,
+        privacy_class=privacy_class,
+        goal_id=goal_id,
+        task_id=task_id,
+    )
+    if routed is not None:
+        return routed
+
     if str(cfg.get("provider") or "") != "openai_compatible":
         raise ValueError(
             f"unsupported provider {cfg.get('provider')!r}; "
             "use openai_compatible and switch via base_url"
         )
-    if not privacy_allowed(cfg, privacy_class):
-        raise PermissionError(
-            f"privacy class {privacy_class!r} must not leave the Pi"
-        )
-    if not messages:
-        raise ValueError("messages must be non-empty")
 
     key = api_key if api_key is not None else resolve_api_key(cfg)
     body = {

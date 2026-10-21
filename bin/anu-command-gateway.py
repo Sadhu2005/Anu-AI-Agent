@@ -38,6 +38,39 @@ def host_command_env():
     }
 
 
+def validate_git_push_argv(argv):
+    """V0.9.5: allow-list git push only to agent/*; deny force and default branch."""
+    if not argv:
+        return list(argv or [])
+    parts = [str(a) for a in argv]
+    if "push" not in parts:
+        return parts
+    if any(a in ("--force", "-f", "--force-with-lease") for a in parts):
+        raise PermissionError("git push --force is denied by command gateway")
+    # Find refspecs after remote name (best-effort).
+    try:
+        push_i = parts.index("push")
+    except ValueError:
+        return parts
+    refspecs = [
+        a for a in parts[push_i + 1 :]
+        if a and not a.startswith("-") and a not in ("origin", "upstream")
+        and (":" in a or a.startswith("agent/") or a.startswith("refs/heads/agent/"))
+    ]
+    if not refspecs:
+        # bare `git push` while on agent/* is OK at workflow layer; gateway requires explicit agent ref
+        raise PermissionError("git push requires explicit agent/* refspec")
+    for spec in refspecs:
+        dest = spec.split(":", 1)[-1].replace("refs/heads/", "")
+        if not dest.startswith("agent/"):
+            raise PermissionError(
+                f"git push destination must be agent/*, got {dest!r}"
+            )
+        if dest in ("main", "master"):
+            raise PermissionError("git push to default branch denied")
+    return parts
+
+
 def harden_host_argv(command_name, argv, project_path=None):
     """Inject safe git -c flags for repository-controlled config (F4).
 
@@ -47,6 +80,10 @@ def harden_host_argv(command_name, argv, project_path=None):
     """
     if not argv:
         return list(argv)
+    if command_name in ("git_push", "git-push") or (
+        argv and Path(argv[0]).name == "git" and "push" in [str(a) for a in argv]
+    ):
+        validate_git_push_argv(argv)
     exe = Path(argv[0]).name
     if exe != "git":
         return list(argv)

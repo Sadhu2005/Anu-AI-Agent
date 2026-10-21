@@ -1,0 +1,36 @@
+[Unit]
+Description=ANU Autonomy HTTP Dashboard (v0.1)
+After=local-fs.target network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=anu-agent
+Group=anu-agent
+
+WorkingDirectory=/srv/anu/home
+
+ExecStart=/usr/bin/python3 /srv/anu/bin/anu-dashboard-v0.1.py serve
+
+Restart=on-failure
+RestartSec=5
+
+Environment=ANU_BASE=/srv/anu
+# Prefer LoadCredential=dashboard-token (maps to CREDENTIALS_DIRECTORY/dashboard-token)
+# or uncomment:
+# EnvironmentFile=-/srv/anu/config/anu-dashboard.env
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+ReadWritePaths=/srv/anu/brain
+ReadWritePaths=/srv/anu/var
+ReadWritePaths=/srv/anu/workspace
+
+ReadOnlyPaths=/srv/anu/bin
+ReadOnlyPaths=/srv/anu/config
+
+[Install]
+WantedBy=multi-user.target

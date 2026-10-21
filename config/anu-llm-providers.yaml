@@ -1,0 +1,91 @@
+# ANU Multi-LLM providers — V0.9.2
+# NO API KEYS IN THIS FILE. Use env vars or *_FILE credential paths.
+# Order = failover priority. Memory lives in brain llm_context, not providers.
+
+enabled: true
+
+defaults:
+  timeout_seconds: 120
+  max_tokens: 2048
+  temperature: 0.2
+  context_chars: 24000
+
+privacy:
+  default_class: INTERNAL
+  forbidden_classes:
+    - SECRET
+  redact_patterns:
+    - "(?i)(api[_-]?key|token|secret|password)\\s*[:=]\\s*\\S+"
+    - "ghp_[A-Za-z0-9]{20,}"
+    - "sk-[A-Za-z0-9]{20,}"
+
+# Cooldown seconds by error class (Retry-After overrides when present).
+cooldowns:
+  rate_limit: 60
+  quota: 3600
+  auth: 86400
+  server_error: 30
+  timeout: 15
+  connection: 30
+
+providers:
+  - name: lmstudio
+    enabled: true
+    base_url: "http://192.168.1.13:1234/v1"
+    model: "meta-llama-3.1-8b-instruct"
+    api_key_env: "ANU_MODEL_API_KEY"
+    api_key_file_env: "ANU_MODEL_API_KEY_FILE"
+    local: true
+    zero_cost: true
+    timeout_seconds: 120
+    max_tokens: 2048
+    rpm: 60
+    daily_requests: 10000
+    daily_tokens: 5000000
+    max_usd_per_day: 0
+
+  - name: groq
+    enabled: true
+    base_url: "https://api.groq.com/openai/v1"
+    model: "llama-3.3-70b-versatile"
+    api_key_env: "ANU_GROQ_API_KEY"
+    api_key_file_env: "ANU_GROQ_API_KEY_FILE"
+    local: false
+    zero_cost: false
+    timeout_seconds: 90
+    max_tokens: 2048
+    rpm: 30
+    daily_requests: 1000
+    daily_tokens: 200000
+    max_usd_per_day: 1.0
+
+  - name: gemini
+    enabled: true
+    # Google OpenAI-compatible endpoint
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
+    model: "gemini-2.0-flash"
+    api_key_env: "ANU_GEMINI_API_KEY"
+    api_key_file_env: "ANU_GEMINI_API_KEY_FILE"
+    local: false
+    zero_cost: false
+    timeout_seconds: 90
+    max_tokens: 2048
+    rpm: 30
+    daily_requests: 1000
+    daily_tokens: 200000
+    max_usd_per_day: 1.0
+
+  - name: openrouter_free
+    enabled: true
+    base_url: "https://openrouter.ai/api/v1"
+    model: "openrouter/free"
+    api_key_env: "ANU_OPENROUTER_API_KEY"
+    api_key_file_env: "ANU_OPENROUTER_API_KEY_FILE"
+    local: false
+    zero_cost: true
+    timeout_seconds: 120
+    max_tokens: 2048
+    rpm: 20
+    daily_requests: 500
+    daily_tokens: 100000
+    max_usd_per_day: 0

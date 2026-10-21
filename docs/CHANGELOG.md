@@ -3,6 +3,17 @@
 Short summary per version. Full detail, design, tests, and evidence are in
 [versions/](versions/).
 
+## [V0.9.0] — 2026-10-21 · branch `v0.9.0-integration` (in progress)
+
+Autonomy foundation + junior-dev controller.
+
+- Objective / checklist / `AUTONOMY_PROGRESS.md` / agent_control
+- Controller CONTINUE / REPLAN / PAUSE / COMPLETE + loop guards
+- Auto-approval policy (all_but_prod), multi-LLM router, dashboard
+- Software-goal planner, git `agent/*` workflow, observability
+- Pack: `run_v0_9_0_regression.py`
+- Docs: [AUTONOMY.md](AUTONOMY.md), [PI-OPS.md](PI-OPS.md), [SECURITY-AUTONOMY.md](SECURITY-AUTONOMY.md)
+
 ## [V0.8.13] — 2026-10-21 · tag `v0.8.13`
 
 Register a repo and assign a goal.

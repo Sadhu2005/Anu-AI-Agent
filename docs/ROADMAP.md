@@ -85,6 +85,16 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.8.11](versions/v0.8.11.md) | Git safe.directory | Sandbox mutations not blocked by parent-repo ownership | V0.8.10 |
 | [V0.8.12](versions/v0.8.12.md) | Hands-off first stage | Expand wakes first READY without manual `run` | V0.8.11 |
 | [V0.8.13](versions/v0.8.13.md) | Register + assign | Point ANU at a repo, then submit a goal | V0.8.12 |
+| [V0.9.0](versions/v0.9.0.md) | Autonomy foundation | Objective, checklist, controller, loop guard | V0.8.13 |
+| V0.9.1 | Auto-approval policy | all_but_prod auto-approve for autonomous goals | V0.9.0 |
+| V0.9.2 | Multi-LLM router | LM Studio → Groq → Gemini → OpenRouter free; shared memory | V0.9.1 |
+| V0.9.3 | Software planner | Real implement/test stages; change generator | V0.9.2 |
+| V0.9.4 | Implement/test/fix loop | Fingerprint-aware REPLAN | V0.9.3 |
+| V0.9.5 | Git agent workflow | `agent/*` branch, small commits, safe push | V0.9.4 |
+| V0.9.6 | Dashboard API | pause/resume/stop, metrics, logs | V0.9.5 |
+| V0.9.7 | Dashboard UI | Single-page monitor | V0.9.6 |
+| V0.9.8 | Checkpoints / resume | Survive reboot mid-goal | V0.9.7 |
+| V0.9.9 | E2E acceptance | Todo-list goal completes unattended | V0.9.8 |
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 
@@ -114,8 +124,10 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.13 (register repo + assign goal) is frozen (tag `v0.8.13`).
-Next slice is open — pick from VISION / ROADMAP when ready.
+V0.8.13 is frozen (tag `v0.8.13`). **V0.9** is in progress on
+`v0.9.0-integration` / `agent/continue-v0.8.13`: junior-dev autonomy,
+multi-LLM failover, and dashboard. See [AUTONOMY.md](AUTONOMY.md) and
+[PI-OPS.md](PI-OPS.md).
 
 ## Model gateway (V0.7.1 frozen)
 

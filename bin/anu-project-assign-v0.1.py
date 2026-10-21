@@ -204,8 +204,14 @@ def assign_goal(
     *,
     expand=False,
     config_path=None,
+    objective=None,
+    criteria=None,
+    autonomous=False,
 ):
-    """Create a pending goal on a registered project; optionally expand it."""
+    """Create a pending goal on a registered project; optionally expand it.
+
+    V0.9: ``objective`` / ``criteria`` / ``autonomous`` attach autonomy state.
+    """
     pi = _pi()
     goals = _goals()
     config = pi.load_projects_config(config_path) if config_path else None
@@ -213,15 +219,52 @@ def assign_goal(
     row = pi.ensure_project_row(db, key, config=config)
     project_id = row["id"] if isinstance(row, dict) else row[0]
     goal = goals.create_goal(db, description, project_id=project_id)
+    autonomy_meta = None
+    if autonomous or objective or criteria is not None:
+        state = _load("anu-autonomy-state-v0.1.py", "anu_state_assign")
+        state.migrate(db)
+        obj_text = (objective or description or "").strip()
+        crit = criteria
+        if crit is None:
+            crit = state.derive_default_criteria(obj_text)
+        autonomy_meta = state.create_objective(
+            db,
+            goal["id"],
+            obj_text,
+            crit,
+            autonomous=bool(autonomous),
+        )
+        goal = goals.get_goal(db, goal["id"]) or goal
     expand_result = None
     if expand:
         cycle = _cycle()
         planner = cycle._load_planner()
-        expand_result = planner.expand_goal(
-            db,
-            goal["id"],
-            project=key,
-        )
+        template = "software_goal" if autonomous else None
+        expand_kwargs = {
+            "db": db,
+            "goal_id": goal["id"],
+            "project": key,
+        }
+        if template and hasattr(planner, "expand_goal"):
+            try:
+                expand_result = planner.expand_goal(
+                    db,
+                    goal["id"],
+                    project=key,
+                    template_name=template,
+                )
+            except TypeError:
+                expand_result = planner.expand_goal(
+                    db,
+                    goal["id"],
+                    project=key,
+                )
+        else:
+            expand_result = planner.expand_goal(
+                db,
+                goal["id"],
+                project=key,
+            )
         try:
             first = cycle.start_first_ready_for_goal(db, goal["id"])
         except Exception as exc:
@@ -240,6 +283,7 @@ def assign_goal(
         "project_key": key,
         "project_id": project_id,
         "goal": goal,
+        "autonomy": autonomy_meta,
         "expand": expand_result,
     }
 
@@ -256,6 +300,9 @@ def connect_project(
     config_path=None,
     runner=None,
     github_cfg=None,
+    objective=None,
+    criteria=None,
+    autonomous=False,
 ):
     registered = register_project(
         db,
@@ -273,6 +320,9 @@ def connect_project(
         description,
         expand=expand,
         config_path=config_path,
+        objective=objective,
+        criteria=criteria,
+        autonomous=autonomous,
     )
     return {
         "ok": True,
@@ -306,6 +356,17 @@ def main(argv=None):
     asg.add_argument("--project-key", required=True)
     asg.add_argument("--goal", required=True)
     asg.add_argument("--expand", action="store_true")
+    asg.add_argument("--objective", default=None)
+    asg.add_argument(
+        "--criteria",
+        default=None,
+        help="semicolon-separated acceptance criteria",
+    )
+    asg.add_argument(
+        "--autonomous",
+        action="store_true",
+        help="mark goal autonomous (V0.9 junior-dev mode)",
+    )
 
     con = sub.add_parser("connect")
     con.add_argument("--project-key")
@@ -313,12 +374,18 @@ def main(argv=None):
     con.add_argument("--goal", required=True)
     con.add_argument("--no-clone", action="store_true")
     con.add_argument("--expand", action="store_true")
+    con.add_argument("--objective", default=None)
+    con.add_argument("--criteria", default=None)
+    con.add_argument("--autonomous", action="store_true")
 
     args = parser.parse_args(argv)
     db = db_connect(args.db)
     try:
         pi = _pi()
         pi.migrate(db)
+        criteria = None
+        if getattr(args, "criteria", None):
+            criteria = [x.strip() for x in args.criteria.split(";") if x.strip()]
         if args.cmd == "register":
             result = register_project(
                 db,
@@ -335,6 +402,9 @@ def main(argv=None):
                 args.goal,
                 expand=args.expand,
                 config_path=args.config,
+                objective=args.objective,
+                criteria=criteria,
+                autonomous=args.autonomous,
             )
         else:
             result = connect_project(
@@ -346,6 +416,9 @@ def main(argv=None):
                 expand=args.expand,
                 workspace_root=args.workspace,
                 config_path=args.config,
+                objective=args.objective,
+                criteria=criteria,
+                autonomous=args.autonomous,
             )
         print(json.dumps(result, indent=2, default=str))
         return 0

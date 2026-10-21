@@ -346,6 +346,27 @@ def request_approval(
         goal_id=goal_id,
     )
     db.commit()
+    # V0.9.1: policy auto-decide for autonomous goals (approve/deny/defer).
+    try:
+        policy_path = None
+        for candidate in (
+            BASE / "bin" / "anu-auto-approval-policy-v0.1.py",
+            _HERE / "anu-auto-approval-policy-v0.1.py",
+            _REPO / "bin" / "anu-auto-approval-policy-v0.1.py",
+        ):
+            if candidate.is_file():
+                policy_path = candidate
+                break
+        if policy_path is not None:
+            spec = importlib.util.spec_from_file_location(
+                "anu_auto_approval_policy_hook",
+                policy_path,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.auto_decide_approval(db, approval_id)
+    except Exception:
+        pass
     return get_approval(db, approval_id)
 
 

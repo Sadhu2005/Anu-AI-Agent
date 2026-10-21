@@ -1,0 +1,59 @@
+# ANU Autonomy Controller — V0.9
+# NO SECRETS IN THIS FILE.
+
+enabled: true
+auto_approve: true   # kill switch: false disables policy auto-approval globally
+
+limits:
+  max_wall_hours: 8
+  max_iterations: 200
+  max_retries_per_task: 3
+  max_same_fingerprint: 3
+  max_replans: 10
+  no_progress_cycles: 5
+  max_fix_attempts_per_stage: 5
+
+scheduler:
+  # While an autonomous goal is active:
+  max_tasks_per_iteration: 3
+  interval_seconds: 15
+
+guardian:
+  # Resource guardian pause is a temporary wait, not a stop.
+  treat_as_wait: true
+
+git:
+  allow_push_agent_branch: true
+  deny_push_default_branch: true
+  deny_force_push: true
+  agent_branch_prefix: "agent/"
+
+progress_file: "AUTONOMY_PROGRESS.md"
+
+policy:
+  auto_approve_classes:
+    - research
+    - github_read
+    - mutation
+    - test
+    - commit
+    - push_agent_branch
+  always_deny_classes:
+    - deploy
+    - prod_infra
+    - secrets
+    - force_push
+    - push_default_branch
+    - delete
+    - new_repo
+  rate_limit_approvals_per_hour: 60
+  protected_paths:
+    - ".github/workflows/"
+    - "deploy/"
+    - "infra/"
+  secret_patterns:
+    - "(?i)api[_-]?key\\s*[:=]\\s*['\\\"]?[A-Za-z0-9_\\-]{16,}"
+    - "(?i)secret\\s*[:=]\\s*['\\\"]?[A-Za-z0-9_\\-]{16,}"
+    - "(?i)BEGIN (RSA |OPENSSH )?PRIVATE KEY"
+    - "ghp_[A-Za-z0-9]{20,}"
+    - "sk-[A-Za-z0-9]{20,}"

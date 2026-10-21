@@ -30,6 +30,22 @@ python3 bin/anu-autonomy-controller-v0.1.py run-once --goal 15
 
 Or use the dashboard (Pause / Resume / Stop).
 
+## Dashboard (V0.9.10)
+
+Local-only UI on `127.0.0.1:8787` (SSH tunnel; see [PI-OPS.md](PI-OPS.md)).
+
+| Tab | Use |
+|---|---|
+| **Overview** | System gauges, autonomous goals table, current tasks, stale heartbeat |
+| **Active Goal** | Checklist + evidence, task timeline, `AUTONOMY_PROGRESS.md` excerpt, message form |
+| **Runtime** | Events, logs, LLM providers, git status, test events |
+| **Approvals** | Pending Approve / Deny inbox |
+| **Assign** | Create a new autonomous goal |
+
+Header goal select drives Active Goal / Runtime git+tests. Token via prompt (stored in `sessionStorage`); mutations send `X-ANU-Token` CSRF.
+
+Missing UI/agent capabilities (diff viewer, SSE, checkpoint restore, multi-file generator, etc.) are listed in [versions/v0.9.10.md](versions/v0.9.10.md).
+
 ## What auto-approves
 
 When `autonomous: true` and `config/anu-autonomy.yaml` `auto_approve: true`:

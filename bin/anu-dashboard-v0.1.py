@@ -173,11 +173,65 @@ def read_log_tail(lines: int = 200) -> str:
                 chunk = min(size, 256_000)
                 handle.seek(max(0, size - chunk))
                 data = handle.read().decode("utf-8", errors="replace")
-            tail = data.splitlines()[-n:]
+            # Fail-soft: never raise on odd line shapes.
+            raw_lines = data.splitlines()
+            tail = [str(line) for line in raw_lines[-n:]]
             return redact_log_text("\n".join(tail))
-        except OSError:
+        except (OSError, TypeError, ValueError):
             continue
     return ""
+
+
+def progress_excerpt_for_goal(db, goal_id: int, *, max_chars: int = 4000) -> dict:
+    """Best-effort AUTONOMY_PROGRESS.md excerpt for the Active Goal tab."""
+    proj = project_for_goal(db, goal_id)
+    if proj is None:
+        return {"ok": False, "error": "goal has no project"}
+    key = proj.get("project_key")
+    root = WORKSPACE / key if key else Path(proj.get("workspace") or "")
+    path = root / "AUTONOMY_PROGRESS.md"
+    if not path.is_file():
+        return {"ok": False, "error": "progress file missing", "path": str(path)}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return {"ok": False, "error": str(exc), "path": str(path)}
+    if len(text) > max_chars:
+        text = text[-max_chars:]
+    return {
+        "ok": True,
+        "path": str(path),
+        "text": redact_log_text(text),
+        "project_key": key,
+    }
+
+
+def format_approval_row(row) -> dict:
+    """Normalize approval rows for UI display (clear action / reason)."""
+    if isinstance(row, sqlite3.Row):
+        rec = dict(row)
+    elif isinstance(row, dict):
+        rec = dict(row)
+    else:
+        rec = {
+            "id": row[0] if len(row) > 0 else None,
+            "task_id": row[1] if len(row) > 1 else None,
+            "goal_id": row[2] if len(row) > 2 else None,
+            "action": row[3] if len(row) > 3 else None,
+            "status": row[4] if len(row) > 4 else None,
+            "reason": row[6] if len(row) > 6 else None,
+        }
+    action = str(rec.get("action") or "").strip()
+    reason = str(rec.get("reason") or "").strip()
+    # Avoid glued labels like capability_operationsresearch
+    if action and reason and not reason.startswith(action):
+        label = f"{action} — {reason}"
+    else:
+        label = action or reason or "(no detail)"
+    rec["label"] = label
+    rec["action"] = action
+    rec["reason"] = reason
+    return rec
 
 
 def guardian_summary(db) -> dict:
@@ -519,85 +573,241 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>ANU Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
-:root { --bg:#0f1419; --panel:#1a2332; --text:#e7ecf3; --muted:#8b9bb4; --accent:#3d8bfd; --warn:#f0ad4e; --bad:#e55353; --ok:#3ddc97; }
+:root {
+  --bg: #0c1118;
+  --bg2: #121a24;
+  --panel: #16202c;
+  --line: #2a3a4d;
+  --text: #e8eef6;
+  --muted: #8a9bb0;
+  --accent: #2ec4b6;
+  --accent2: #4a90d9;
+  --warn: #e0a24a;
+  --bad: #e35d5d;
+  --ok: #3ddc97;
+  --radius: 10px;
+}
 * { box-sizing: border-box; }
-body { margin:0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background:var(--bg); color:var(--text); line-height:1.4; }
-header { padding:1rem; background:var(--panel); border-bottom:1px solid #243044; position:sticky; top:0; z-index:2; }
-h1 { margin:0 0 .25rem; font-size:1.25rem; }
-.meta { color:var(--muted); font-size:.85rem; }
-.grid { display:grid; gap:.75rem; padding:.75rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.card { background:var(--panel); border:1px solid #243044; border-radius:8px; padding:.75rem; }
-.card h2 { margin:0 0 .5rem; font-size:1rem; }
-.gauge { display:flex; justify-content:space-between; font-size:.9rem; margin:.25rem 0; }
-.bar { height:6px; background:#243044; border-radius:4px; overflow:hidden; margin-top:2px; }
-.bar > i { display:block; height:100%; background:var(--accent); width:0%; }
-.row { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
-button, input, textarea, select { font:inherit; border-radius:6px; border:1px solid #3a4a63; background:#121a26; color:var(--text); padding:.4rem .6rem; }
-button { cursor:pointer; background:#243044; }
-button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-button.danger { background:var(--bad); border-color:var(--bad); }
-pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.78rem; white-space:pre-wrap; word-break:break-word; max-height:220px; overflow:auto; background:#0b1018; padding:.5rem; border-radius:6px; }
-.list { max-height:240px; overflow:auto; }
-.item { padding:.35rem 0; border-bottom:1px solid #243044; font-size:.85rem; }
-.banner { background:#3a2a12; color:#ffdca8; padding:.5rem .75rem; margin:.75rem; border-radius:6px; display:none; }
-label { font-size:.8rem; color:var(--muted); display:block; margin-bottom:.15rem; }
-form .field { margin-bottom:.5rem; }
-@media (max-width:640px) { header { position:static; } }
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #1a2a3a 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #0f2a28 0%, transparent 50%),
+    var(--bg);
+  color: var(--text);
+  line-height: 1.45;
+  min-height: 100vh;
+}
+header {
+  padding: 1rem 1.1rem .65rem;
+  background: rgba(18, 26, 36, .92);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 5;
+  backdrop-filter: blur(8px);
+}
+.brand { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: baseline; }
+h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.meta { color: var(--muted); font-size: .85rem; font-family: "IBM Plex Mono", monospace; }
+.controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .75rem; }
+.tabs {
+  display: flex; gap: .35rem; overflow-x: auto; padding: .55rem 1.1rem 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg2);
+}
+.tab {
+  flex: 0 0 auto;
+  border: 0; border-bottom: 2px solid transparent;
+  background: transparent; color: var(--muted);
+  padding: .55rem .85rem; cursor: pointer; font-weight: 500;
+}
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+main { padding: 1rem 1.1rem 2rem; }
+.panel { display: none; }
+.panel.active { display: block; }
+.grid { display: grid; gap: .85rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grid-2 { display: grid; gap: .85rem; grid-template-columns: 1.2fr 1fr; }
+@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: .9rem 1rem;
+}
+.card h2 { margin: 0 0 .65rem; font-size: .95rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.gauge { display: flex; justify-content: space-between; font-size: .9rem; margin: .3rem 0; }
+.bar { height: 6px; background: #243044; border-radius: 4px; overflow: hidden; margin-top: 3px; }
+.bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); width: 0%; }
+button, input, textarea, select {
+  font: inherit; border-radius: 7px; border: 1px solid #3a4a63;
+  background: #0f1620; color: var(--text); padding: .45rem .65rem;
+}
+button { cursor: pointer; background: #243044; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #042a28; font-weight: 600; }
+button.danger { background: var(--bad); border-color: var(--bad); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+pre, .mono {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .78rem; white-space: pre-wrap; word-break: break-word;
+  max-height: 320px; overflow: auto; background: #0a1018;
+  padding: .65rem; border-radius: 8px; border: 1px solid #1c2838;
+}
+pre.tall { max-height: 420px; }
+.list { max-height: 320px; overflow: auto; }
+.item { padding: .45rem 0; border-bottom: 1px solid #243044; font-size: .88rem; }
+.item:last-child { border-bottom: 0; }
+.item .actions { display: inline-flex; gap: .35rem; margin-left: .5rem; }
+.banner {
+  display: none; margin: .75rem 1.1rem 0; padding: .55rem .85rem;
+  border-radius: 8px; border: 1px solid #5a4820; background: #2a2212; color: #ffdca8;
+}
+.banner.show { display: block; }
+.banner.stale { border-color: #6a3030; background: #2a1418; color: #ffc9c9; }
+.empty { color: var(--muted); font-size: .88rem; padding: .35rem 0; }
+label { font-size: .78rem; color: var(--muted); display: block; margin-bottom: .2rem; }
+form .field { margin-bottom: .55rem; }
+table.goals { width: 100%; border-collapse: collapse; font-size: .88rem; }
+table.goals th, table.goals td { text-align: left; padding: .4rem .35rem; border-bottom: 1px solid var(--line); }
+table.goals th { color: var(--muted); font-weight: 500; font-size: .75rem; text-transform: uppercase; }
+.pill {
+  display: inline-block; padding: .1rem .45rem; border-radius: 999px;
+  font-size: .72rem; font-family: "IBM Plex Mono", monospace; background: #243044;
+}
+.pill.done, .pill.completed { background: #1a3d32; color: var(--ok); }
+.pill.pending, .pill.active { background: #2a3344; color: #c5d4e8; }
+.pill.blocked, .pill.failed, .pill.cancelled { background: #3d2228; color: #ffb4b4; }
+.obj { font-size: .95rem; margin-bottom: .75rem; }
+.status-dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; margin-right: .35rem; background: var(--ok); }
+.status-dot.down { background: var(--bad); }
+.status-dot.warn { background: var(--warn); }
+@media (max-width: 640px) {
+  header { position: static; }
+  .tabs { padding-left: .75rem; padding-right: .75rem; }
+  main { padding: .75rem; }
+}
 </style>
 </head>
 <body>
 <header>
-  <h1>ANU Autonomy Dashboard</h1>
-  <div class="meta" id="hdr-meta">Connecting…</div>
-  <div class="row" style="margin-top:.5rem">
+  <div class="brand">
+    <h1>ANU Autonomy</h1>
+    <div class="meta" id="hdr-meta">Connecting…</div>
+  </div>
+  <div class="controls">
     <button type="button" id="btn-pause">Pause</button>
     <button type="button" id="btn-resume">Resume</button>
     <button type="button" class="danger" id="btn-stop">Stop</button>
-    <label style="margin-left:auto"><input type="number" id="goal-filter" placeholder="goal id" style="width:6rem"/></label>
+    <label style="margin-left:auto; display:flex; align-items:center; gap:.4rem;">
+      <span>Goal</span>
+      <select id="goal-filter" style="min-width:12rem"><option value="">— select —</option></select>
+    </label>
   </div>
 </header>
 <div class="banner" id="blocker-banner"></div>
-<main class="grid">
-  <section class="card"><h2>System</h2><div id="system-panel"></div></section>
-  <section class="card"><h2>Current task</h2><div id="task-panel" class="list"></div></section>
-  <section class="card"><h2>Checklist</h2><div id="checklist-panel" class="list"></div></section>
-  <section class="card"><h2>Events</h2><div id="events-panel" class="list"></div></section>
-  <section class="card"><h2>Logs</h2><pre id="logs-panel"></pre></section>
-  <section class="card"><h2>Tests</h2><div id="tests-panel" class="list"></div></section>
-  <section class="card"><h2>Git</h2><pre id="git-panel"></pre></section>
-  <section class="card"><h2>LLM</h2><div id="llm-panel" class="list"></div></section>
-  <section class="card"><h2>Approvals</h2><div id="approvals-panel" class="list"></div></section>
-  <section class="card"><h2>New goal</h2>
-    <form id="goal-form">
-      <div class="field"><label>project_key</label><input name="project_key" required/></div>
-      <div class="field"><label>description</label><input name="description" required/></div>
-      <div class="field"><label>objective</label><input name="objective"/></div>
-      <div class="field"><label><input type="checkbox" name="autonomous" checked/> autonomous</label></div>
-      <button type="submit" class="primary">Create goal</button>
-    </form>
+<div class="banner stale" id="stale-banner"></div>
+<nav class="tabs" role="tablist" aria-label="Dashboard sections">
+  <button type="button" class="tab" role="tab" data-tab="overview" id="tab-overview" aria-selected="true">Overview</button>
+  <button type="button" class="tab" role="tab" data-tab="goal" id="tab-goal" aria-selected="false">Active Goal</button>
+  <button type="button" class="tab" role="tab" data-tab="runtime" id="tab-runtime" aria-selected="false">Runtime</button>
+  <button type="button" class="tab" role="tab" data-tab="approvals" id="tab-approvals" aria-selected="false">Approvals</button>
+  <button type="button" class="tab" role="tab" data-tab="assign" id="tab-assign" aria-selected="false">Assign</button>
+</nav>
+<main>
+  <section class="panel active" id="panel-overview" role="tabpanel" data-panel="overview">
+    <div class="grid">
+      <section class="card"><h2>System</h2><div id="system-panel"></div></section>
+      <section class="card"><h2>Current tasks</h2><div id="task-panel" class="list"></div></section>
+      <section class="card" style="grid-column:1/-1"><h2>Goals</h2><div id="goals-table-wrap"></div></section>
+    </div>
   </section>
-  <section class="card"><h2>Message goal</h2>
-    <form id="msg-form">
-      <div class="field"><label>goal_id</label><input name="goal_id" type="number" required/></div>
-      <div class="field"><label>message</label><textarea name="message" rows="3" required></textarea></div>
-      <button type="submit" class="primary">Send</button>
-    </form>
+  <section class="panel" id="panel-goal" role="tabpanel" data-panel="goal">
+    <div class="grid-2">
+      <section class="card">
+        <h2>Objective</h2>
+        <div class="obj" id="goal-objective"></div>
+        <h2>Checklist</h2>
+        <div id="checklist-panel" class="list"></div>
+      </section>
+      <section class="card">
+        <h2>Task timeline</h2>
+        <div id="timeline-panel" class="list"></div>
+      </section>
+      <section class="card">
+        <h2>Progress file</h2>
+        <pre id="progress-panel" class="tall"></pre>
+      </section>
+      <section class="card">
+        <h2>Message goal</h2>
+        <form id="msg-form">
+          <div class="field"><label>message</label><textarea name="message" rows="4" required placeholder="Guidance for the agent…"></textarea></div>
+          <button type="submit" class="primary">Send</button>
+        </form>
+      </section>
+    </div>
+  </section>
+  <section class="panel" id="panel-runtime" role="tabpanel" data-panel="runtime">
+    <div class="grid-2">
+      <section class="card"><h2>Events</h2><div id="events-panel" class="list"></div></section>
+      <section class="card"><h2>LLM providers</h2><div id="llm-panel" class="list"></div></section>
+      <section class="card"><h2>Logs</h2><pre id="logs-panel" class="tall"></pre></section>
+      <div class="grid" style="gap:.85rem">
+        <section class="card"><h2>Git</h2><pre id="git-panel"></pre></section>
+        <section class="card"><h2>Tests</h2><div id="tests-panel" class="list"></div></section>
+      </div>
+    </div>
+  </section>
+  <section class="panel" id="panel-approvals" role="tabpanel" data-panel="approvals">
+    <section class="card"><h2>Pending approvals</h2><div id="approvals-panel" class="list"></div></section>
+  </section>
+  <section class="panel" id="panel-assign" role="tabpanel" data-panel="assign">
+    <section class="card" style="max-width:36rem">
+      <h2>New goal</h2>
+      <form id="goal-form">
+        <div class="field"><label>project_key</label><input name="project_key" required placeholder="sandbox-test-project"/></div>
+        <div class="field"><label>description</label><input name="description" required placeholder="What should ANU build?"/></div>
+        <div class="field"><label>objective</label><input name="objective" placeholder="Optional longer objective"/></div>
+        <div class="field"><label>criteria (comma-separated)</label><input name="criteria" placeholder="tests pass, confined to workspace"/></div>
+        <div class="field"><label><input type="checkbox" name="autonomous" checked/> autonomous</label></div>
+        <button type="submit" class="primary">Create goal</button>
+      </form>
+    </section>
   </section>
 </main>
 <script>
 (function(){
   const TOKEN_KEY = "anu_dashboard_token";
+  const STALE_HEARTBEAT_S = 90;
+  let goalsCache = [];
+  let autoSelected = false;
+
   function token(){
     let t = sessionStorage.getItem(TOKEN_KEY);
     if(!t){ t = prompt("ANU dashboard token:"); if(t) sessionStorage.setItem(TOKEN_KEY, t); }
     return t || "";
   }
   function el(id){ return document.getElementById(id); }
-  function setText(node, text){ node.textContent = text == null ? "" : String(text); }
-  function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
+  function setText(node, text){ if(node) node.textContent = text == null ? "" : String(text); }
+  function clear(node){ if(!node) return; while(node.firstChild) node.removeChild(node.firstChild); }
+  function empty(parent, msg){
+    const d = document.createElement("div"); d.className = "empty"; setText(d, msg); parent.appendChild(d);
+  }
   function addLine(parent, text){
     const d = document.createElement("div"); d.className = "item"; setText(d, text); parent.appendChild(d);
+  }
+  function pill(status){
+    const s = document.createElement("span");
+    s.className = "pill " + String(status||"").toLowerCase();
+    setText(s, status || "?");
+    return s;
   }
   function gauge(parent, label, value, pct){
     const row = document.createElement("div"); row.className = "gauge";
@@ -624,22 +834,80 @@ form .field { margin-bottom:.5rem; }
     const v = el("goal-filter").value.trim();
     return v ? parseInt(v, 10) : null;
   }
-  async function refreshStatus(){
-    const st = await api("/api/status");
-    const ctl = st.control || {};
-    setText(el("hdr-meta"), "control=" + (ctl.state||"run") + " | goals=" + (st.autonomous_goals||[]).length + " | heartbeat=" + (st.heartbeat_age_s != null ? st.heartbeat_age_s + "s" : "n/a"));
-    const tasks = el("task-panel"); clear(tasks);
-    (st.current_tasks||[]).forEach(t=> addLine(tasks, "#"+t.id+" "+t.title+" ["+t.status+"]"));
-    const goalId = selectedGoal() || (st.autonomous_goals && st.autonomous_goals[0] && st.autonomous_goals[0].id);
-    if(goalId){
-      const g = await api("/api/goals/"+goalId);
-      const cl = el("checklist-panel"); clear(cl);
-      (g.checklist||[]).forEach(c=> addLine(cl, "["+c.status+"] "+c.item));
-      const blockers = (g.checklist||[]).filter(c=>c.status==="blocked").map(c=>c.item);
-      const banner = el("blocker-banner");
-      if(blockers.length){ banner.style.display="block"; setText(banner, "Blockers: "+blockers.join("; ")); }
-      else { banner.style.display="none"; }
+  function setTab(name){
+    document.querySelectorAll(".tab").forEach(t=>{
+      const on = t.getAttribute("data-tab") === name;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    document.querySelectorAll(".panel").forEach(p=>{
+      p.classList.toggle("active", p.getAttribute("data-panel") === name);
+    });
+    if(location.hash !== "#" + name) location.hash = name;
+  }
+  function fillGoalSelect(goals){
+    const sel = el("goal-filter");
+    const prev = sel.value;
+    clear(sel);
+    const opt0 = document.createElement("option"); opt0.value = ""; setText(opt0, "— select —");
+    sel.appendChild(opt0);
+    (goals||[]).forEach(g=>{
+      const o = document.createElement("option");
+      o.value = String(g.id);
+      const desc = (g.description || g.objective || "").slice(0, 48);
+      setText(o, "#" + g.id + " [" + (g.status||"?") + "] " + desc);
+      sel.appendChild(o);
+    });
+    if(prev && [].some.call(sel.options, o => o.value === prev)) sel.value = prev;
+    else if(!autoSelected && goals && goals.length){
+      const active = goals.find(g => (g.status||"") === "active") || goals[0];
+      sel.value = String(active.id);
+      autoSelected = true;
     }
+  }
+  function renderGoalsTable(goals){
+    const wrap = el("goals-table-wrap"); clear(wrap);
+    if(!goals || !goals.length){ empty(wrap, "No autonomous goals yet."); return; }
+    const table = document.createElement("table"); table.className = "goals";
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    ["ID","Status","Description"].forEach(h=>{
+      const th = document.createElement("th"); setText(th, h); hr.appendChild(th);
+    });
+    thead.appendChild(hr); table.appendChild(thead);
+    const tb = document.createElement("tbody");
+    goals.forEach(g=>{
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = ()=>{ el("goal-filter").value = String(g.id); setTab("goal"); tick(); };
+      const td1 = document.createElement("td"); setText(td1, "#" + g.id);
+      const td2 = document.createElement("td"); td2.appendChild(pill(g.status));
+      const td3 = document.createElement("td"); setText(td3, g.description || g.objective || "");
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb); wrap.appendChild(table);
+  }
+  async function refreshOverview(st){
+    const ctl = (st && st.control) || {};
+    const age = st && st.heartbeat_age_s;
+    const ageTxt = age != null ? ("heartbeat age " + age + "s") : "heartbeat n/a";
+    setText(el("hdr-meta"), "control=" + (ctl.state||"run") + " · goals=" + ((st && st.autonomous_goals)||[]).length + " · " + ageTxt);
+    const stale = el("stale-banner");
+    if(age != null && age > STALE_HEARTBEAT_S){
+      stale.classList.add("show");
+      setText(stale, "Runtime heartbeat is stale (" + age + "s). Check anu-agent / anu-runtime.");
+    } else {
+      stale.classList.remove("show");
+    }
+    const tasks = el("task-panel"); clear(tasks);
+    const cur = (st && st.current_tasks) || [];
+    if(!cur.length) empty(tasks, "No running or waiting tasks.");
+    else cur.forEach(t=> addLine(tasks, "#" + t.id + " " + (t.title||"") + " [" + t.status + "]"));
+
+    const goalsResp = await api("/api/goals");
+    goalsCache = goalsResp.goals || [];
+    fillGoalSelect(goalsCache);
+    renderGoalsTable(goalsCache);
   }
   async function refreshSystem(){
     const s = await api("/api/system");
@@ -655,74 +923,183 @@ form .field { margin-bottom:.5rem; }
     if(s.temperature_c != null) gauge(p, "Temp °C", s.temperature_c, null);
     if(s.uptime_seconds != null) gauge(p, "Uptime s", s.uptime_seconds, null);
   }
-  async function refreshEvents(){
-    const ev = await api("/api/events?limit=40");
-    const p = el("events-panel"); clear(p);
-    (ev.events||[]).forEach(e=> addLine(p, e.created_at+" "+e.event_type+": "+(e.message||"")));
-  }
-  async function refreshLogs(){
-    const lg = await api("/api/logs?tail=120");
-    setText(el("logs-panel"), lg.text||"");
-  }
-  async function refreshPanels(){
+  async function refreshActiveGoal(){
     const gid = selectedGoal();
-    const q = gid ? "?goal="+gid : "";
-    const tests = await api("/api/tests"+q);
-    const tp = el("tests-panel"); clear(tp);
-    (tests.events||[]).forEach(e=> addLine(tp, e.created_at+" "+e.event_type+": "+(e.message||"")));
-    const git = await api("/api/git"+q);
-    setText(el("git-panel"), git.ok ? [(git.branch||"")+" @ "+(git.head||""), ...(git.log||[]), ...(git.status||[])].join("\n") : (git.error||"n/a"));
+    const objEl = el("goal-objective");
+    const cl = el("checklist-panel");
+    const tl = el("timeline-panel");
+    const prog = el("progress-panel");
+    const banner = el("blocker-banner");
+    if(!gid){
+      setText(objEl, "Select a goal in the header.");
+      clear(cl); empty(cl, "No goal selected.");
+      clear(tl); empty(tl, "No goal selected.");
+      setText(prog, "");
+      banner.classList.remove("show");
+      return;
+    }
+    const resp = await api("/api/goals/"+gid);
+    const g = resp.goal || resp;
+    setText(objEl, (g.objective || g.description || "(no objective)") + " · status " + (g.status||"?"));
+    clear(cl);
+    const checklist = g.checklist || [];
+    if(!checklist.length) empty(cl, "No checklist items.");
+    else checklist.forEach(c=>{
+      const row = document.createElement("div"); row.className = "item";
+      row.appendChild(pill(c.status));
+      const span = document.createElement("span");
+      setText(span, " " + (c.item||""));
+      row.appendChild(span);
+      if(c.evidence){
+        const ev = document.createElement("div");
+        ev.className = "mono";
+        ev.style.marginTop = ".25rem";
+        setText(ev, String(c.evidence).slice(0, 240));
+        row.appendChild(ev);
+      }
+      cl.appendChild(row);
+    });
+    const blockers = checklist.filter(c=>c.status==="blocked").map(c=>c.item);
+    if(blockers.length){ banner.classList.add("show"); setText(banner, "Blockers: "+blockers.join("; ")); }
+    else banner.classList.remove("show");
+
+    const tasks = await api("/api/tasks?goal="+gid);
+    clear(tl);
+    const list = tasks.tasks || [];
+    if(!list.length) empty(tl, "No tasks for this goal.");
+    else list.forEach(t=>{
+      const row = document.createElement("div"); row.className = "item";
+      row.appendChild(pill(t.status));
+      const span = document.createElement("span");
+      setText(span, " #" + t.id + " " + (t.title||"") + (t.attempts!=null ? " · attempts "+t.attempts : ""));
+      row.appendChild(span);
+      tl.appendChild(row);
+    });
+
+    const pr = await api("/api/goals/"+gid+"/progress");
+    setText(prog, pr.ok ? (pr.text||"") : (pr.error || "No progress file."));
+  }
+  async function refreshRuntime(){
+    const ev = await api("/api/events?limit=50");
+    const p = el("events-panel"); clear(p);
+    const events = ev.events || [];
+    if(!events.length) empty(p, "No events yet.");
+    else events.forEach(e=> addLine(p, (e.created_at||"")+" "+(e.event_type||"")+": "+(e.message||"")));
+
+    const lg = await api("/api/logs?tail=160");
+    setText(el("logs-panel"), lg.text || "(no log file)");
+
     const llm = await api("/api/llm");
     const lp = el("llm-panel"); clear(lp);
-    (llm.providers||[]).forEach(pr=> addLine(lp, pr.provider+": "+(pr.available?"ok":"down")+" — "+(pr.why||"")));
+    const providers = llm.providers || [];
+    if(!providers.length) empty(lp, "No providers configured.");
+    else providers.forEach(pr=>{
+      const row = document.createElement("div"); row.className = "item";
+      const dot = document.createElement("span");
+      dot.className = "status-dot" + (pr.available ? "" : " down");
+      row.appendChild(dot);
+      const span = document.createElement("span");
+      setText(span, (pr.provider||"?") + " — " + (pr.available ? "ok" : "down") + (pr.why ? (" · "+pr.why) : ""));
+      row.appendChild(span);
+      lp.appendChild(row);
+    });
+
+    const gid = selectedGoal();
+    const tp = el("tests-panel"); clear(tp);
+    const gp = el("git-panel");
+    if(!gid){
+      empty(tp, "Select a goal to see tests.");
+      setText(gp, "Select a goal to see git status.");
+      return;
+    }
+    const tests = await api("/api/tests?goal="+gid);
+    const te = tests.events || [];
+    if(!te.length) empty(tp, "No test events for this goal.");
+    else te.forEach(e=> addLine(tp, (e.created_at||"")+" "+(e.event_type||"")+": "+(e.message||"")));
+    const git = await api("/api/git?goal="+gid);
+    setText(gp, git.ok
+      ? [(git.branch||"")+" @ "+(git.head||""), ...(git.log||[]), ...(git.status||[])].filter(Boolean).join("\n")
+      : (git.error || "n/a"));
+  }
+  async function refreshApprovals(){
     const appr = await api("/api/approvals");
     const ap = el("approvals-panel"); clear(ap);
-    (appr.approvals||[]).forEach(a=>{
-      const row = document.createElement("div"); row.className="item";
-      setText(row, "#"+a.id+" "+a.action+" task="+a.task_id+" — "+a.reason);
-      const yes = document.createElement("button"); setText(yes,"Approve"); yes.onclick=()=>decide(a.id,"approve");
-      const no = document.createElement("button"); setText(no,"Deny"); no.onclick=()=>decide(a.id,"deny");
-      row.appendChild(yes); row.appendChild(no); ap.appendChild(row);
+    const list = appr.approvals || [];
+    if(!list.length){ empty(ap, "No pending approvals."); return; }
+    list.forEach(a=>{
+      const row = document.createElement("div"); row.className = "item";
+      const label = a.label || ((a.action||"") + (a.reason ? (" — "+a.reason) : ""));
+      const text = document.createElement("div");
+      setText(text, "#" + a.id + " task=" + (a.task_id||"?") + (a.goal_id!=null ? (" goal="+a.goal_id) : "") + " · " + label);
+      row.appendChild(text);
+      const actions = document.createElement("div"); actions.className = "actions";
+      const yes = document.createElement("button"); setText(yes,"Approve"); yes.className="primary";
+      yes.onclick=()=>decide(a.id,"approve");
+      const no = document.createElement("button"); setText(no,"Deny"); no.className="danger";
+      no.onclick=()=>decide(a.id,"deny");
+      actions.appendChild(yes); actions.appendChild(no); row.appendChild(actions);
+      ap.appendChild(row);
     });
   }
   async function decide(id, action){
     await api("/api/approvals/"+id, {method:"POST", body: JSON.stringify({action})});
-    refreshPanels();
+    refreshApprovals();
   }
   async function control(action){
     if(action==="stop" && !confirm("Stop autonomy?")) return;
     const gid = selectedGoal();
     await api("/api/control", {method:"POST", body: JSON.stringify({action, goal_id: gid||undefined})});
-    refreshStatus();
+    tick();
   }
   el("btn-pause").onclick=()=>control("pause");
   el("btn-resume").onclick=()=>control("resume");
   el("btn-stop").onclick=()=>control("stop");
+  el("goal-filter").onchange=()=>tick();
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.onclick=()=>setTab(t.getAttribute("data-tab"));
+  });
   el("goal-form").onsubmit=async (e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
+    const critRaw = (fd.get("criteria")||"").toString().trim();
     const body = {
       project_key: fd.get("project_key"),
       description: fd.get("description"),
       objective: fd.get("objective") || undefined,
       autonomous: !!fd.get("autonomous")
     };
+    if(critRaw) body.criteria = critRaw.split(",").map(s=>s.trim()).filter(Boolean);
     const res = await api("/api/goals", {method:"POST", body: JSON.stringify(body)});
-    alert("Created goal "+res.goal.id);
-    refreshStatus();
+    const gid = res.goal && res.goal.id;
+    alert("Created goal " + gid);
+    autoSelected = false;
+    if(gid){ el("goal-filter").value = String(gid); }
+    setTab("goal");
+    tick();
   };
   el("msg-form").onsubmit=async (e)=>{
     e.preventDefault();
+    const gid = selectedGoal();
+    if(!gid){ alert("Select a goal first."); return; }
     const fd = new FormData(e.target);
-    const gid = fd.get("goal_id");
     await api("/api/goals/"+gid+"/message", {method:"POST", body: JSON.stringify({message: fd.get("message")})});
     e.target.reset();
+    alert("Message sent to goal " + gid);
   };
   async function tick(){
     try{
-      await Promise.all([refreshStatus(), refreshSystem(), refreshEvents(), refreshLogs(), refreshPanels()]);
+      const st = await api("/api/status");
+      await Promise.all([
+        refreshOverview(st),
+        refreshSystem(),
+        refreshActiveGoal(),
+        refreshRuntime(),
+        refreshApprovals()
+      ]);
     }catch(err){ setText(el("hdr-meta"), "Error: "+err.message); }
   }
+  const hash = (location.hash||"#overview").replace("#","");
+  setTab(["overview","goal","runtime","approvals","assign"].indexOf(hash)>=0 ? hash : "overview");
   tick();
   setInterval(tick, 3000);
 })();
@@ -786,6 +1163,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 json_response(self, HTTPStatus.OK, {"ok": True, **collect_system()})
             elif path == "/api/goals":
                 self._handle_goals_list()
+            elif path.startswith("/api/goals/") and path.endswith("/progress"):
+                # /api/goals/<id>/progress
+                parts = [p for p in path.split("/") if p]
+                if len(parts) == 4 and parts[2].isdigit():
+                    self._handle_goal_progress(int(parts[2]))
+                else:
+                    json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
             elif path.startswith("/api/goals/") and path.count("/") == 3:
                 gid = path.split("/")[-1]
                 if gid.isdigit():
@@ -838,7 +1222,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 db = db_connect()
                 try:
                     svc = approval_service()
-                    json_response(self, HTTPStatus.OK, {"ok": True, "approvals": svc.list_pending(db)})
+                    raw = svc.list_pending(db) or []
+                    approvals = [format_approval_row(a) for a in raw]
+                    json_response(self, HTTPStatus.OK, {"ok": True, "approvals": approvals})
                 finally:
                     db.close()
             else:
@@ -870,7 +1256,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             elif path == "/api/goals":
                 self._handle_create_goal(body)
             elif path.startswith("/api/goals/") and path.endswith("/message"):
-                parts = path.split("/")
+                # /api/goals/<id>/message
+                parts = [p for p in path.split("/") if p]
                 if len(parts) == 4 and parts[2].isdigit():
                     self._handle_goal_message(int(parts[2]), body)
                 else:
@@ -929,15 +1316,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
         db = db_connect()
         try:
             state = autonomy_state()
-            rows = db.execute(
-                """SELECT id FROM goals WHERE autonomous = 1 ORDER BY id DESC LIMIT 200"""
-            ).fetchall()
+            try:
+                rows = db.execute(
+                    """SELECT id FROM goals WHERE autonomous = 1 ORDER BY id DESC LIMIT 200"""
+                ).fetchall()
+            except sqlite3.Error:
+                rows = db.execute(
+                    """SELECT id FROM goals ORDER BY id DESC LIMIT 200"""
+                ).fetchall()
             goals = []
             for row in rows:
                 gid = row[0] if not isinstance(row, sqlite3.Row) else row["id"]
                 obj = state.get_objective(db, gid)
-                if obj:
-                    goals.append(obj)
+                if not obj:
+                    continue
+                # Slim fields for dropdown / table.
+                goals.append({
+                    "id": obj.get("id", gid),
+                    "status": obj.get("status"),
+                    "description": obj.get("description"),
+                    "objective": obj.get("objective"),
+                    "autonomous": obj.get("autonomous"),
+                    "checklist_pending": sum(
+                        1 for c in (obj.get("checklist") or [])
+                        if (c.get("status") or "") == "pending"
+                    ),
+                })
             json_response(self, HTTPStatus.OK, {"ok": True, "goals": goals})
         finally:
             db.close()
@@ -952,7 +1356,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
             obj["control"] = state.effective_control(db, goal_id)
             obj["latest_checkpoint"] = state.latest_checkpoint(db, goal_id)
+            obj["progress"] = progress_excerpt_for_goal(db, goal_id)
             json_response(self, HTTPStatus.OK, {"ok": True, "goal": obj})
+        finally:
+            db.close()
+
+    def _handle_goal_progress(self, goal_id: int) -> None:
+        db = db_connect()
+        try:
+            payload = progress_excerpt_for_goal(db, goal_id)
+            code = HTTPStatus.OK if payload.get("ok") else HTTPStatus.OK
+            json_response(self, code, payload)
         finally:
             db.close()
 

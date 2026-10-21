@@ -79,6 +79,24 @@ class TestAutoApproval(unittest.TestCase):
         r = self.policy.evaluate(self.db, capability="deploy", goal_id=1)
         self.assertEqual(r["decision"], "deny")
 
+    def test_always_deny_leaves_approval_pending(self):
+        """Deploy is never auto-approved, but stays pending for a human gate."""
+        approval = _load("anu-approval-service-v0.1.py", "anu_appr_pol")
+        approval.migrate(self.db)
+        rec = approval.request_approval(
+            self.db,
+            action="production_deployment",
+            task_id=None,
+            goal_id=1,
+            reason="production_deployment_requires_approval",
+        )
+        self.assertEqual(rec["status"], "pending")
+        decided = self.policy.auto_decide_approval(self.db, rec["id"])
+        self.assertEqual(decided.get("decision"), "defer")
+        self.assertEqual(decided.get("reason"), "always_deny_awaits_human")
+        again = approval.get_approval(self.db, rec["id"])
+        self.assertEqual(again["status"], "pending")
+
     def test_deny_force_push(self):
         r = self.policy.evaluate(
             self.db, capability="git_push", goal_id=1, force=True

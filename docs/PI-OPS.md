@@ -50,13 +50,27 @@ Local development uses `v0.9.0-integration` (and later `v0.9.x-integration`) bra
 
 ## Dashboard tunnel
 
-Dashboard binds `127.0.0.1:8787` only:
+Dashboard binds `127.0.0.1:8787` only (`anu-dashboard.service`):
 
 ```bash
 ssh -L 8787:127.0.0.1:8787 anu-vps1947@raspberrypi
 ```
 
 Then open `http://127.0.0.1:8787/` with `ANU_DASHBOARD_TOKEN`.
+
+### Tabs (V0.9.10)
+
+Overview · Active Goal · Runtime · Approvals · Assign — System gauges stay on Overview. Full map: [AUTONOMY.md](AUTONOMY.md). Backlog of missing panels: [versions/v0.9.10.md](versions/v0.9.10.md).
+
+### Restart after deploy
+
+```bash
+sudo systemctl restart anu-dashboard.service
+sudo systemctl --no-pager -l status anu-dashboard.service
+curl -sS -H "Authorization: Bearer $ANU_DASHBOARD_TOKEN" http://127.0.0.1:8787/api/health
+```
+
+Install (once): `bash tools/pi-install-dashboard.sh` on the Pi under `/srv/anu`.
 
 ## Model gateway on Pi
 

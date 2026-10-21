@@ -10,27 +10,30 @@ Group=anu-agent
 
 WorkingDirectory=/srv/anu/home
 
-ExecStart=/usr/bin/python3 /srv/anu/bin/anu-dashboard-v0.1.py serve
+ExecStart=/usr/bin/python3 /srv/anu/bin/anu-dashboard-v0.1.py serve --host 127.0.0.1 --port 8787
 
 Restart=on-failure
 RestartSec=5
 
 Environment=ANU_BASE=/srv/anu
-# Prefer LoadCredential=dashboard-token (maps to CREDENTIALS_DIRECTORY/dashboard-token)
-# or uncomment:
-# EnvironmentFile=-/srv/anu/config/anu-dashboard.env
+# systemd injects CREDENTIALS_DIRECTORY; dashboard reads dashboard-token from it.
+LoadCredential=dashboard-token:/srv/anu/secrets/dashboard-token
 
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-
-ReadWritePaths=/srv/anu/brain
-ReadWritePaths=/srv/anu/var
-ReadWritePaths=/srv/anu/workspace
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 ReadOnlyPaths=/srv/anu/bin
 ReadOnlyPaths=/srv/anu/config
+ReadOnlyPaths=/srv/anu/secrets
+
+ReadWritePaths=/srv/anu/brain
+ReadWritePaths=/srv/anu/workspace
+ReadWritePaths=/srv/anu/logs
+ReadWritePaths=/srv/anu/runtime
+ReadWritePaths=/srv/anu/home
 
 [Install]
 WantedBy=multi-user.target

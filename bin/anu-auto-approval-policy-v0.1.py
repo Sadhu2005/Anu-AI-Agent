@@ -354,6 +354,31 @@ def auto_decide_approval(db, approval_id, *, config=None):
 
     if result["decision"] == "deny":
         by = f"policy:{result['rule']}"
+        # always_deny (deploy, secrets class, force-push, …): never auto-approve,
+        # but leave the row pending so a human can Approve/Deny (V0.7 production gate).
+        # Hard denies (path_escape, secret_scan, owner allow-list) still auto-reject.
+        if result.get("rule") == "always_deny":
+            try:
+                state = _load("anu-autonomy-state-v0.1.py", "anu_state_policy3")
+                if goal_id is not None:
+                    state.set_control(
+                        db, "pause", scope="goal", goal_id=goal_id,
+                        reason=result.get("reason"), by_who=by,
+                    )
+                state.emit_autonomy_event(
+                    db, goal_id, "AUTONOMY_PAUSE",
+                    f"policy always_deny awaits human for approval {approval_id}",
+                    {"approval_id": approval_id, **result},
+                )
+            except Exception:
+                pass
+            return {
+                "ok": True,
+                "decision": "defer",
+                "by": by,
+                "result": result,
+                "reason": "always_deny_awaits_human",
+            }
         if hasattr(approval, "reject"):
             approval.reject(
                 db, approval_id, decided_by=by, note=result.get("reason")

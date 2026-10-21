@@ -124,6 +124,7 @@ def test_expand_persists_research_spec():
             db,
             goal_id=1,
             project="sandbox-test-project",
+            template_name="multi_stage_goal",
             changes_file="changes.json",
             plan_id="plan-087",
         )

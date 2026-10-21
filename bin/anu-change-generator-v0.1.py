@@ -18,23 +18,51 @@ MAX_LINES_PER_FILE = 400
 
 
 def validate_changes(doc, *, project_root=None):
-    """Validate changes JSON schema and path safety."""
-    if not isinstance(doc, dict):
-        raise ValueError("changes root must be an object")
-    files = doc.get("files")
-    if files is None and "changes" in doc:
-        files = doc["changes"]
+    """Validate Safe Mutation changes: a JSON array of {file, old, new}.
+
+    Also accepts a legacy object form ``{"files":[{path,action,content}]}``
+    and normalizes it to the engine contract.
+    """
+    # Engine contract: top-level array
+    if isinstance(doc, list):
+        files = doc
+        legacy = False
+    elif isinstance(doc, dict):
+        files = doc.get("files")
+        if files is None and "changes" in doc:
+            files = doc["changes"]
+        legacy = True
+    else:
+        raise ValueError("changes root must be a list or object")
     if not isinstance(files, list) or not files:
-        raise ValueError("changes.files must be a non-empty list")
+        raise ValueError("changes must be a non-empty list")
     if len(files) > MAX_FILES:
         raise ValueError(f"too many files: {len(files)} > {MAX_FILES}")
     out = []
     for entry in files:
         if not isinstance(entry, dict):
             raise ValueError("each file entry must be an object")
-        path = entry.get("path") or entry.get("file")
-        if not path or not isinstance(path, str):
-            raise ValueError("file entry missing path")
+        # Prefer Safe Mutation keys; fall back to legacy path/content.
+        if "file" in entry and "old" in entry and "new" in entry:
+            path = entry["file"]
+            old = entry["old"]
+            new = entry["new"]
+            if not isinstance(path, str) or not isinstance(old, str) or not isinstance(new, str):
+                raise ValueError("file/old/new must be strings")
+        elif legacy:
+            path = entry.get("path") or entry.get("file")
+            if not path or not isinstance(path, str):
+                raise ValueError("file entry missing path")
+            action = (entry.get("action") or entry.get("op") or "modify").lower()
+            content = entry.get("content")
+            if action == "delete":
+                raise ValueError("delete not supported by Safe Mutation v0.2")
+            if content is None or not isinstance(content, str):
+                raise ValueError(f"content required for {path}")
+            old = entry.get("old") or f"# ANU_STUB_{Path(path).name}\n"
+            new = content
+        else:
+            raise ValueError("each change requires file/old/new strings")
         norm = path.replace("\\", "/")
         while norm.startswith("./"):
             norm = norm[2:]
@@ -46,95 +74,75 @@ def validate_changes(doc, *, project_root=None):
             or ".." in norm.split("/")
         ):
             raise ValueError(f"path escapes workspace: {path}")
-        action = (entry.get("action") or entry.get("op") or "modify").lower()
-        if action not in ("create", "modify", "delete", "write", "update"):
-            raise ValueError(f"unsupported action: {action}")
-        content = entry.get("content")
-        if action != "delete":
-            if content is None:
-                raise ValueError(f"content required for {action}: {path}")
-            lines = str(content).count("\n") + 1
-            if lines > MAX_LINES_PER_FILE:
-                raise ValueError(
-                    f"file too large: {path} has {lines} lines > {MAX_LINES_PER_FILE}"
-                )
+        lines = new.count("\n") + 1
+        if lines > MAX_LINES_PER_FILE:
+            raise ValueError(
+                f"file too large: {norm} has {lines} lines > {MAX_LINES_PER_FILE}"
+            )
         if project_root is not None:
             target = (Path(project_root) / norm).resolve()
             try:
                 target.relative_to(Path(project_root).resolve())
             except ValueError as exc:
                 raise ValueError(f"path outside project: {path}") from exc
-        out.append({
-            "path": norm,
-            "action": "delete" if action == "delete" else (
-                "create" if action == "create" else "modify"
-            ),
-            "content": None if action == "delete" else content,
-        })
+        out.append({"file": norm, "old": old, "new": new})
     return {"ok": True, "files": out}
 
 
 def write_changes_file(project_key, doc, *, filename=DEFAULT_CHANGES, root=None):
-    validated = validate_changes(doc)
+    """Write Safe Mutation array format; seed stub files when old is a stub marker."""
     project = Path(root) if root else (WORKSPACE / project_key)
     project.mkdir(parents=True, exist_ok=True)
+    validated = validate_changes(doc, project_root=project)
+    # Seed stubs so create-via-replace works (engine requires file + 1 match).
+    for entry in validated["files"]:
+        target = project / entry["file"]
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(entry["old"], encoding="utf-8")
     path = project / filename
-    payload = {
-        "files": [
-            {
-                "path": f["path"],
-                "action": f["action"],
-                "content": f["content"],
-            }
-            for f in validated["files"]
-        ]
-    }
+    payload = [
+        {"file": f["file"], "old": f["old"], "new": f["new"]}
+        for f in validated["files"]
+    ]
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return {"ok": True, "path": str(path), "file_count": len(payload["files"])}
+    return {"ok": True, "path": str(path), "file_count": len(payload)}
 
 
 def generate_todo_list_changes(project_key):
     """Deterministic fallback generator for the classic todo-list goal."""
-    doc = {
-        "files": [
-            {
-                "path": "todo.py",
-                "action": "create",
-                "content": (
-                    "#!/usr/bin/env python3\n"
-                    "\"\"\"Simple in-memory todo list.\"\"\"\n\n"
-                    "class TodoList:\n"
-                    "    def __init__(self):\n"
-                    "        self._items = []\n\n"
-                    "    def add(self, text):\n"
-                    "        text = str(text).strip()\n"
-                    "        if not text:\n"
-                    "            raise ValueError('empty todo')\n"
-                    "        self._items.append(text)\n"
-                    "        return text\n\n"
-                    "    def list(self):\n"
-                    "        return list(self._items)\n\n"
-                    "    def clear(self):\n"
-                    "        self._items.clear()\n"
-                ),
-            },
-            {
-                "path": "test_todo.py",
-                "action": "create",
-                "content": (
-                    "import unittest\n"
-                    "from todo import TodoList\n\n"
-                    "class TestTodo(unittest.TestCase):\n"
-                    "    def test_add_and_list(self):\n"
-                    "        t = TodoList()\n"
-                    "        t.add('a')\n"
-                    "        self.assertEqual(t.list(), ['a'])\n\n"
-                    "if __name__ == '__main__':\n"
-                    "    unittest.main()\n"
-                ),
-            },
-        ]
-    }
+    todo = (
+        "#!/usr/bin/env python3\n"
+        "\"\"\"Simple in-memory todo list.\"\"\"\n\n"
+        "class TodoList:\n"
+        "    def __init__(self):\n"
+        "        self._items = []\n\n"
+        "    def add(self, text):\n"
+        "        text = str(text).strip()\n"
+        "        if not text:\n"
+        "            raise ValueError('empty todo')\n"
+        "        self._items.append(text)\n"
+        "        return text\n\n"
+        "    def list(self):\n"
+        "        return list(self._items)\n\n"
+        "    def clear(self):\n"
+        "        self._items.clear()\n"
+    )
+    test = (
+        "import unittest\n"
+        "from todo import TodoList\n\n"
+        "class TestTodo(unittest.TestCase):\n"
+        "    def test_add_and_list(self):\n"
+        "        t = TodoList()\n"
+        "        t.add('a')\n"
+        "        self.assertEqual(t.list(), ['a'])\n\n"
+        "if __name__ == '__main__':\n"
+        "    unittest.main()\n"
+    )
+    doc = [
+        {"file": "todo.py", "old": "# ANU_STUB_todo.py\n", "new": todo},
+        {"file": "test_todo.py", "old": "# ANU_STUB_test_todo.py\n", "new": test},
+    ]
     return write_changes_file(project_key, doc)
 
 

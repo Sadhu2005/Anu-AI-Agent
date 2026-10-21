@@ -114,8 +114,8 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.13 (register repo + assign goal) is on `v0.8.13-integration` — pack ready,
-awaiting Pi smoke / freeze.
+V0.8.13 (register repo + assign goal) is on `v0.8.13-integration` — pack proven
+on Pi; live assign needs sudo checkout of the branch.
 
 ## Model gateway (V0.7.1 frozen)
 

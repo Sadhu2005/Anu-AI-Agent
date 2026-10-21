@@ -311,14 +311,22 @@ def decide(db, goal_id, *, config=None, guardian_data=None, last_failure=None):
                 "reason": "all_tasks_and_checklist_done",
                 "detail": {"task_count": len(tasks)},
             }
-        # Tasks done but checklist pending → still COMPLETE if criteria empty,
-        # else ask to mark evidence.
+        # Tasks done but checklist pending → COMPLETE; apply_decision stamps
+        # evidence onto pending checklist items.
         if not checklist:
             return {
                 "decision": DECIDE_COMPLETE,
                 "reason": "all_tasks_done_no_checklist",
                 "detail": {"task_count": len(tasks)},
             }
+        return {
+            "decision": DECIDE_COMPLETE,
+            "reason": "all_tasks_done_checklist_pending",
+            "detail": {
+                "task_count": len(tasks),
+                "pending_checklist": [c.get("id") for c in pending],
+            },
+        }
 
     ready = _ready_tasks(db, goal_id)
     if ready:

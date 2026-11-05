@@ -27,6 +27,21 @@ Full version plans (implement one at a time):
 **Do not start V1.2 until V1.1 exit criteria pass** (and prefer a frozen V1.0
 lab-repo baseline first — see [versions/v1.0.md](versions/v1.0.md)).
 
+## V1.2 pin (Pi experiment)
+
+| | |
+|---|---|
+| **Hermes version** | `v0.22.7` (stable; local checkout `b200f5bc60`) |
+| **Install** | `curl -fsSL https://hermes-agent.nousresearch.com/install.sh` with `--non-interactive --skip-browser --skip-computer-use` |
+| **Install script SHA256** | `abf338605dae6dd28d101673ac6aed7995c955745db46d47676bc591a7957209` |
+| **Host path** | `/home/anu-vps1947/.hermes` (not `/srv/anu`) |
+| **Operator keys** | `~/.hermes/.env` — see [experiments/hermes-v1.2.md](experiments/hermes-v1.2.md) |
+| **LM Studio** | Operator-owned LAN service; ANU does not install it on the PC |
+
+Env vars (manual): `OPENROUTER_API_KEY` / `HERMES_OPENROUTER_API_KEY`,
+`LM_BASE_URL` / `HERMES_LMSTUDIO_BASE_URL`, `HERMES_LMSTUDIO_MODEL`, optional
+`LM_API_KEY`.
+
 ## Architecture
 
 ```mermaid

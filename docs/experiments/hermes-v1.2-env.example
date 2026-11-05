@@ -1,0 +1,17 @@
+# Hermes V1.2 experiment secrets — copy to ~/.hermes/.env on the Pi
+# (or merge keys). Never put these under /srv/anu/secrets or in git.
+#
+# Operator fills values manually. Empty string = not ready for that smoke.
+
+# --- OpenRouter (cloud smoke) ---
+OPENROUTER_API_KEY=
+HERMES_OPENROUTER_API_KEY=
+HERMES_OPENROUTER_MODEL=openrouter/auto
+
+# --- LM Studio on LAN PC (you start the service; ANU does not install it) ---
+# Default matches prior ANU lab PC address; change if your host IP differs.
+LM_BASE_URL=http://192.168.1.13:1234/v1
+HERMES_LMSTUDIO_BASE_URL=http://192.168.1.13:1234/v1
+LM_API_KEY=
+# Model id from GET $HERMES_LMSTUDIO_BASE_URL/models once the server is up.
+HERMES_LMSTUDIO_MODEL=

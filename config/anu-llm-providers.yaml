@@ -52,6 +52,8 @@ providers:
     api_key_file_env: "ANU_GROQ_API_KEY_FILE"
     local: false
     zero_cost: false
+    # Approximate blended estimate for usage accounting (not a billing quote).
+    usd_per_1m_tokens: 0.50
     timeout_seconds: 90
     max_tokens: 2048
     rpm: 30
@@ -68,6 +70,8 @@ providers:
     api_key_file_env: "ANU_GEMINI_API_KEY_FILE"
     local: false
     zero_cost: false
+    # Approximate blended estimate for usage accounting (not a billing quote).
+    usd_per_1m_tokens: 0.20
     timeout_seconds: 90
     max_tokens: 2048
     rpm: 30

@@ -48,8 +48,11 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for history. **No TypeScript agent rewrit
   50 GB disk and RAM reserves free, one task at a time.
 - **Failure is classified, not repeated.** Max 3 attempts; blocked tasks are
   never retried automatically.
-- **No network, browser, package installs, git push, deployment, or sudo** at
-  this stage. No AI model is running on the Pi yet.
+- **Lab-repo network is narrow.** Default agent isolation still applies; the
+  Pi lab drop-in (`lab-github.conf`) may allow outbound HTTPS for git so ANU
+  can push only `agent/*` using a PAT at `/srv/anu/secrets/github-token`.
+  No browser automation, package installs, deploy, sudo, force-push, or
+  default-branch push.
 
 ## Repository Layout
 

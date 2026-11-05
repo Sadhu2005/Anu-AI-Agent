@@ -74,6 +74,13 @@ Install (once): `bash tools/pi-install-dashboard.sh` on the Pi under `/srv/anu`.
 
 ### Lab workspace + GitHub token
 
+Lab push uses a systemd drop-in (`anu-agent.service.d/lab-github.conf`) that
+enables outbound TCP (`PrivateNetwork=no` + `AF_INET`/`AF_INET6`) so HTTPS
+git works. Destination remains `agent/*` only; PAT lives at
+`/srv/anu/secrets/github-token` (`ANU_GITHUB_TOKEN_FILE`). Never commit the
+token. Without the drop-in/token, pushes are skipped — do not treat that as
+a silent success.
+
 ```bash
 sudo mkdir -p /srv/anu/workspace/projects/anu-agent-test
 sudo chown anu-agent:anu-agent /srv/anu/workspace/projects/anu-agent-test

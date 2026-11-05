@@ -263,6 +263,26 @@ def get_usage(db, name, day=None):
     }
 
 
+def estimate_usd(provider, tokens) -> float:
+    """Estimate spend for usage accounting (config-driven; not billing-grade).
+
+    ``zero_cost`` providers always record 0. Paid providers use
+    ``usd_per_1m_tokens`` × tokens / 1e6 when set.
+    """
+    if not isinstance(provider, dict):
+        return 0.0
+    if provider.get("zero_cost"):
+        return 0.0
+    rate = float(provider.get("usd_per_1m_tokens") or 0.0)
+    try:
+        n = int(tokens or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if rate <= 0 or n <= 0:
+        return 0.0
+    return (n / 1_000_000.0) * rate
+
+
 def bump_usage(db, name, *, tokens=0, usd=0.0):
     day = today_utc()
     db.execute(
@@ -527,7 +547,9 @@ def chat(
                 )
             usage = resp.get("usage") or {}
             tokens = int(usage.get("total_tokens") or 0)
-            bump_usage(db, name, tokens=tokens, usd=0.0 if provider.get("zero_cost") else 0.0)
+            bump_usage(
+                db, name, tokens=tokens, usd=estimate_usd(provider, tokens),
+            )
             set_provider_health(db, name, state="healthy", success=True, cooldown_until=None)
             return {
                 "ok": True,

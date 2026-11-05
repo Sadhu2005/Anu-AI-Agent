@@ -46,23 +46,51 @@ class TestLabUnattended(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             _seed_lab(root)
-            evidence = {"tasks": [], "human_next": False}
+            # Product tree must exist outside .anu/ before claiming progress.
+            product_files = [
+                root / "src" / "labapp" / "__init__.py",
+                root / "tests" / "unit" / "test_ok.py",
+            ]
+            for pf in product_files:
+                self.assertTrue(pf.is_file(), msg=f"missing product file {pf}")
+
+            evidence = {
+                "tasks": [],
+                "human_next": False,
+                "product_files": [str(p.relative_to(root)).replace("\\", "/") for p in product_files],
+                "anu_only": False,
+                "push": {"status": "skip", "reason": "unit_pack_no_network"},
+            }
             for i, name in enumerate(
                 ["scaffold", "integration", "repair", "docs", "regression"], start=1
             ):
                 report = matrix.run_matrix(root)
                 self.assertTrue(report["ok"], msg=str(report))
                 matrix.write_matrix_artifact(root, report)
+                # Distinguish real product artifacts from .anu-only churn.
+                anu_art = root / ".anu" / "MATRIX_RESULTS.json"
+                self.assertTrue(anu_art.is_file())
+                self.assertTrue(
+                    any(p.is_file() for p in product_files),
+                    msg="progress must include product files, not only .anu/",
+                )
                 evidence["tasks"].append({
                     "id": i,
                     "name": name,
                     "matrix": report["summary"],
-                    "pushed": False,  # unit pack does not network-push
+                    "product_ok": True,
+                    "push_status": "skip",  # pack never silently claims push OK
                 })
             path = root / ".anu" / "LAB_E2E_EVIDENCE.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
-            self.assertEqual(len(evidence["tasks"]), 5)
-            self.assertFalse(evidence["human_next"])
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(len(loaded["tasks"]), 5)
+            self.assertFalse(loaded["human_next"])
+            self.assertFalse(loaded["anu_only"])
+            self.assertEqual(loaded["push"]["status"], "skip")
+            self.assertTrue(all(t["push_status"] == "skip" for t in loaded["tasks"]))
+            self.assertTrue(all(t.get("product_ok") for t in loaded["tasks"]))
 
     def test_injected_fail_then_diagnose(self):
         matrix = _load("anu-test-matrix-v0.1.py", "anu_matrix_lab2")

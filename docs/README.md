@@ -17,9 +17,10 @@ the next version.
 | [MODEL-STRATEGY.md](MODEL-STRATEGY.md) | How intelligence plugs in: API-first model gateway, budget, privacy, local models later |
 | [MODEL-GATEWAY.md](MODEL-GATEWAY.md) | Operator guide: LM Studio / cloud switch via base_url + API key |
 | [VISION.md](VISION.md) | What ANU becomes after V0.7.0: direction from V0.8 to V1.0 |
+| [HERMES-INTEGRATION.md](HERMES-INTEGRATION.md) | ANU × Hermes strategy; version plans V1.1–V1.6 |
 | [DECISIONS.md](DECISIONS.md) | Architecture decision log: what was decided, why, and at what cost |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Current execution chain and target V0.7.0 architecture |
-| [ROADMAP.md](ROADMAP.md) | V0.6.0 → V0.7.0 plan, ordering rules, maturity |
+| [ROADMAP.md](ROADMAP.md) | Version plan, ordering rules, maturity (incl. Hermes track) |
 | [HISTORY.md](HISTORY.md) | How ANU was built, from the first config file to the first autonomous task |
 | [CHANGELOG.md](CHANGELOG.md) | Short summary of every version |
 | [versions/](versions/) | One file per version (completed and planned) |

@@ -102,8 +102,19 @@ V0.7.1       ████████░░░░░░░░░░░░   40% 
 | [V0.9.14](versions/v0.9.14.md) | Generator stages | multi-file / fix prompts | V0.9.13 |
 | [V0.9.15](versions/v0.9.15.md) | Lab unattended E2E | 5-task no-next pack | V0.9.14 |
 | [V1.0](versions/v1.0.md) | Lab-repo freeze | Gated PR + hardening | V0.9.15 |
+| [V1.1](versions/v1.1.md) | Baseline hardening | Cost accounting, CI→0.9.15, lab E2E, docs | V1.0 |
+| [V1.2](versions/v1.2.md) | Hermes standalone | ARM64 CLI, LM Studio / OpenRouter, blank slate | V1.1 |
+| [V1.3](versions/v1.3.md) | Isolated execution | `anu-hermes` user, rootless Podman, temp workspace | V1.2 |
+| [V1.4](versions/v1.4.md) | Hermes adapter | Job contract + adapter/worker/result + systemd | V1.3 |
+| [V1.5](versions/v1.5.md) | Verification handoff | Patch → Safe Mutation → matrix → repair | V1.4 |
+| [V1.6](versions/v1.6.md) | Release integration | `agent/*`, gated PR, dashboard Hermes jobs | V1.5 |
+
+Hermes track strategy: [HERMES-INTEGRATION.md](HERMES-INTEGRATION.md).
+**Do not start V1.2 until V1.1 exit criteria pass** (prefer frozen V1.0 first).
+ANU stays the control plane; Hermes is an optional coding worker only.
 
 **Rejected:** rewriting ANU in TypeScript/Node. Lab target ≠ agent. See [LAB-REPO.md](LAB-REPO.md).
+**Rejected:** embedding Hermes source into ANU or giving Hermes git push / secrets.
 
 ## Milestone Reached (V0.5.9, 5 Oct 2026)
 

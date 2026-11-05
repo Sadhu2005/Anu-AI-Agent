@@ -39,6 +39,11 @@ ACCEPT (verification) → test matrix gate → commit on agent/* → push → ne
 
 Config: `push_after_accept: true` in [config/anu-autonomy.yaml](../config/anu-autonomy.yaml).
 
+On the Pi, outbound HTTPS for that push is enabled only via the
+`lab-github.conf` drop-in (`PrivateNetwork=no`); destination is still
+`agent/*` only, with PAT at `/srv/anu/secrets/github-token`. Missing token
+or drop-in → push skipped (recorded), not a silent success.
+
 ## Test matrix
 
 Ordered layers: **unit → integration → functional → e2e → regression**.

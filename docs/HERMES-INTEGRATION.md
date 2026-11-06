@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | V1.1 done · V1.3 `anu-hermes` CLI v0.22.7 on Ollama · V1.4 not started |
+| **Status** | V1.1 done · V1.3 `anu-hermes` CLI v0.22.7 on Ollama · V1.4 contract on `v1.4-integration`; live execution disabled |
 | **Baseline branch** | `v0.9.0-integration` |
 | **Baseline commit** | `deb619f` (21 Oct 2026) |
 | **Host** | Raspberry Pi 5, 8 GB, ARM64, Debian 13 |
@@ -151,6 +151,10 @@ ANU sends a structured job (temporary working copy — never a writable
 `file/old/new`, applies via Safe Mutation, and re-runs the matrix.
 
 See [versions/v1.4.md](versions/v1.4.md) for full JSON shapes.
+
+The Pi unit is installed and disabled. `ExecStart` is `--check` only.
+`enabled` and `execute` stay false, and the goal cycle does not call the
+adapter. Recorded in [PI-OPS.md](PI-OPS.md).
 
 ## Official references
 

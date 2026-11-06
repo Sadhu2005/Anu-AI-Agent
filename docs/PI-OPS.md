@@ -100,3 +100,37 @@ lab at Ollama on Ubuntu anu-server: `http://192.168.1.13:11434/v1`, model
 
 Multi-provider failover is configured in `config/anu-llm-providers.yaml`
 (keys via env / credential files, never in git).
+
+## Hermes worker unit (V1.4)
+
+`anu-hermes.service` is installed from
+[deploy/systemd/anu-hermes.service](../deploy/systemd/anu-hermes.service)
+and is **disabled**. It is a oneshot check, not a coding job.
+
+| | |
+|---|---|
+| User / group | `anu-hermes` |
+| Working directory | `/var/lib/anu-hermes` |
+| Start | `/usr/bin/python3 /srv/anu/bin/anu-hermes-worker-v0.1.py --check` |
+| Boot | not enabled |
+| Credentials | none. No `Environment=`, no `LoadCredential`, no `/srv/anu/secrets` |
+
+Checked on the Pi at 2026-11-06 04:56:50 UTC while `/srv/anu` was detached at
+`a429356`:
+
+```text
+{"ok": true, "execute": false, "spawn": false}
+anu-hermes.service: Deactivated successfully.
+```
+
+`inactive (dead)` after that line is the oneshot finishing. `anu-agent` and
+`anu-model-gateway` were active. The gateway stayed on
+`http://192.168.1.13:11434/v1`, model `qwen2.5-coder:7b`.
+
+Do not `systemctl enable` this unit. Do not change `ExecStart` to a live
+Hermes job. `execute` stays false in `config/anu-hermes.yaml`.
+
+The previous production tree is git stash `pre-v1.4-checkout` on
+`v0.9.0-integration`. Leave it. Applying it would put those edits back on
+top of the V1.4 checkout. CI commit `59ffacb` only adds the Actions layer
+jobs; the Pi was not moved to that commit for this check.

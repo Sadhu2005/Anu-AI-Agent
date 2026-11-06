@@ -1,5 +1,6 @@
-# ANU Hermes worker unit (V1.4). Not installed and not enabled.
-# Copying this file into /etc/systemd/system is a later step.
+# ANU Hermes worker unit (V1.4).
+# Installed on the Pi as a disabled oneshot. ExecStart stays --check.
+# Do not enable this unit for a coding job.
 # Do not add credential files or token paths.
 
 [Unit]

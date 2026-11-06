@@ -145,12 +145,16 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 ## Immediate Target
 
 V1.1 baseline hardening is done (`7bf4ba4`). Hermes track is on
-`experiment/hermes-worker`:
+`v1.4-integration`:
 
 - **V1.2** — CLI pinned on the Pi; blank-slate and isolation checks recorded.
   OpenRouter and LM Studio smokes still wait on operator keys and the LM Studio API.
 - **V1.3** — in progress: rootless Podman policy, `anu-hermes` user, disposable
   `/var/lib/anu-hermes/jobs/<id>/`. See [versions/v1.3.md](versions/v1.3.md).
+- **V1.4** — job contract proved. Pi checkout `a429356` ran the disabled
+  oneshot as `anu-hermes` (`execute: false`). CI `59ffacb` passed Unit,
+  Integration, Functional, and Regression. Live enqueue is still open.
+  See [versions/v1.4.md](versions/v1.4.md).
 
 Lab autonomy (V0.9 through V1.0) already landed on this branch. See
 [AUTONOMY.md](AUTONOMY.md), [HERMES-INTEGRATION.md](HERMES-INTEGRATION.md), and

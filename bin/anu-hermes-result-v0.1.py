@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
-"""ANU Hermes result v0.1 — validate a job payload. Does not apply it."""
+"""ANU Hermes result v0.1 — validate a job payload and hand it to Safe Mutation.
+
+prepare_mutation does not write. apply_ready_handoff is the only apply path,
+and it refuses anything that is not a ready handoff. It does not commit or push.
+"""
 
 from __future__ import annotations
 
+import contextlib
+import gc
+import importlib.util
+import io
+import json
+import os
+import sqlite3
+import sys
 import re
 from pathlib import Path
 
@@ -187,4 +199,151 @@ def prepare_mutation(payload: dict, workspace: Path, project_tip: str) -> dict:
         "base_commit": base,
         "changes": changes,
         "reason": "ready",
+    }
+
+
+def _under_production(path: Path) -> bool:
+    raw = str(path).replace("\\", "/")
+    try:
+        resolved = str(path.resolve()).replace("\\", "/")
+    except OSError:
+        resolved = raw
+    for text in (raw, resolved):
+        if text == "/srv/anu" or text.startswith("/srv/anu/"):
+            return True
+    return False
+
+
+def _closed(reason: str) -> dict:
+    return {
+        "ok": False,
+        "applied": False,
+        "eligible_commit": False,
+        "commit": False,
+        "push": False,
+        "git_push_ok": False,
+        "status": "NOT_APPLIED",
+        "transaction_id": "",
+        "changes": [],
+        "reason": reason,
+    }
+
+
+def _refuse_handoff(handoff) -> str:
+    if not isinstance(handoff, dict):
+        return "handoff must be an object"
+    if handoff.get("commit") or handoff.get("push"):
+        return "handoff commit and push must stay false"
+    if not handoff.get("ok") or handoff.get("reason") != "ready":
+        return str(handoff.get("reason") or "handoff is not ready")
+    changes = handoff.get("changes")
+    if not isinstance(changes, list) or not changes:
+        return "empty changes"
+    for item in changes:
+        if not isinstance(item, dict):
+            return "change must be an object"
+        for key in ("file", "old", "new"):
+            if not isinstance(item.get(key), str):
+                return f"change requires string {key}"
+    return ""
+
+
+_ENGINE_LOADS = 0
+
+
+def _load_safe_mutation():
+    global _ENGINE_LOADS
+    _ENGINE_LOADS += 1
+    path = Path(__file__).resolve().parent / "anu-safe-mutation-v0.2.py"
+    spec = importlib.util.spec_from_file_location(
+        f"anu_safe_mutation_handoff_{os.getpid()}_{_ENGINE_LOADS}",
+        path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not hasattr(module.os, "fchmod"):
+        module.os.fchmod = lambda fd, mode: None
+    return module
+
+
+def _run_safe_mutation(project_dir: Path, changes: list, verify) -> dict:
+    """Checkpoint, apply, and verify through the existing Safe Mutation engine."""
+    module = _load_safe_mutation()
+    state = project_dir.parent.parent / "anu-handoff-state"
+    module.DB_FILE = state / "brain.db"
+    module.LOG_FILE = state / "logs" / "anu-mutations.jsonl"
+    module.CHECKPOINT_ROOT = state / "checkpoints"
+    module.WORKSPACE = project_dir.parent
+    module.EXECUTION_LOCK_FILE = state / "execution.lock"
+    module.DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    schema = Path(__file__).resolve().parents[1] / "migrations" / "0001_initial.sql"
+    db = sqlite3.connect(module.DB_FILE)
+    try:
+        db.executescript(schema.read_text(encoding="utf-8"))
+        db.commit()
+    finally:
+        db.close()
+    module.run_gateway = verify
+    changes_path = project_dir / ".anu-changes.json"
+    changes_path.write_text(json.dumps(changes), encoding="utf-8")
+    argv = [
+        "anu-safe-mutation-v0.2.py",
+        "--project",
+        project_dir.name,
+        "--changes-file",
+        str(changes_path),
+        "--operation",
+        "python_test",
+    ]
+    saved = sys.argv
+    sys.argv = argv
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            module.main()
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+    else:
+        code = 0
+    finally:
+        sys.argv = saved
+    text = buf.getvalue().strip()
+    try:
+        payload = json.loads(text) if text else {}
+    except json.JSONDecodeError:
+        payload = {"ok": False, "error": text}
+    if not isinstance(payload, dict):
+        payload = {"ok": False, "error": "engine returned a non-object"}
+    payload["exit_code"] = code
+    del module
+    gc.collect()
+    return payload
+
+
+def apply_ready_handoff(handoff, project_dir, *, verify, engine=None) -> dict:
+    """Apply one ready handoff. Aborted handoffs never reach the engine."""
+    reason = _refuse_handoff(handoff)
+    if reason:
+        return _closed(reason)
+    project = Path(project_dir)
+    if _under_production(project):
+        return _closed("production path refused")
+    if engine is None:
+        if verify is None:
+            return _closed("verify is required")
+        engine = lambda changes: _run_safe_mutation(project, changes, verify)
+    raw = engine(handoff["changes"])
+    status = str((raw or {}).get("status") or "MUTATION_ENGINE_ERROR")
+    committed = status in {"COMMITTED", "ALREADY_COMMITTED"}
+    return {
+        "ok": committed,
+        "applied": committed,
+        "eligible_commit": committed,
+        "commit": False,
+        "push": False,
+        "git_push_ok": False,
+        "status": status,
+        "transaction_id": str((raw or {}).get("transaction_id") or ""),
+        "changes": list(handoff["changes"]) if committed else [],
+        "reason": status,
     }

@@ -155,9 +155,9 @@ V1.1 baseline hardening is done (`7bf4ba4`). Hermes track is on
   oneshot as `anu-hermes` (`execute: false`). CI `59ffacb` passed Unit,
   Integration, Functional, and Regression. Live enqueue is still open.
   See [versions/v1.4.md](versions/v1.4.md).
-- **V1.5** — handoff check started on `v1.5-integration`. A finished result
-  becomes `file`/`old`/`new` or aborts. Safe Mutation apply is not started.
-  See [versions/v1.5.md](versions/v1.5.md).
+- **V1.5** — a ready handoff can apply through Safe Mutation in a temp
+  project. A failed verify rolls back. No commit or push. Matrix and repair
+  are not started. See [versions/v1.5.md](versions/v1.5.md).
 
 Lab autonomy (V0.9 through V1.0) already landed on this branch. See
 [AUTONOMY.md](AUTONOMY.md), [HERMES-INTEGRATION.md](HERMES-INTEGRATION.md), and

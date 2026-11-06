@@ -7,6 +7,7 @@ Nothing in this file applies a change, commits, or pushes.
 from __future__ import annotations
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -212,6 +213,102 @@ class TestHermesHandoffFunctionalV15(unittest.TestCase):
         self.assertFalse(out["commit"])
         self.assertFalse(out["push"])
         print("PASS functional completed handoff stays on disk")
+
+
+def _ok_verify(*_args, **_kwargs):
+    return {"process_exit_code": 0, "result": {"ok": True}, "stdout": "", "stderr": ""}
+
+
+def _project(root: Path) -> tuple[Path, Path]:
+    project = root / "projects" / "sandbox-test-project"
+    target = project / "src" / "labapp" / "clamp.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("old\n", encoding="utf-8", newline="\n")
+    return project, target
+
+
+class TestHermesApplyV15(unittest.TestCase):
+    def setUp(self):
+        self.result = _load("anu-hermes-result-v0.1.py", "hermes_result_v15_apply")
+
+    def test_aborted_handoff_does_not_call_engine(self):
+        calls = []
+        handoff = self.result.prepare_mutation(_payload(), Path("."), "other-sha")
+        with tempfile.TemporaryDirectory() as tmp:
+            project, target = _project(Path(tmp))
+            before = target.read_bytes()
+            out = self.result.apply_ready_handoff(
+                handoff,
+                project,
+                verify=_ok_verify,
+                engine=lambda changes: calls.append(changes) or {},
+            )
+            self.assertEqual(target.read_bytes(), before)
+        self.assertEqual(calls, [])
+        self.assertEqual(out["status"], "NOT_APPLIED")
+        self.assertFalse(out["eligible_commit"])
+        self.assertFalse(out["git_push_ok"])
+        self.assertFalse(out["commit"])
+        self.assertFalse(out["push"])
+        print("PASS apply aborted handoff never reaches the engine")
+
+    def test_production_path_does_not_call_engine(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp:
+            project, _target = _project(Path(tmp))
+            handoff = self.result.prepare_mutation(_payload(), project, TIP)
+        out = self.result.apply_ready_handoff(
+            handoff,
+            Path("/srv/anu/workspace/projects/sandbox-test-project"),
+            verify=_ok_verify,
+            engine=lambda changes: calls.append(changes) or {},
+        )
+        self.assertEqual(calls, [])
+        self.assertEqual(out["reason"], "production path refused")
+        self.assertFalse(out["git_push_ok"])
+        print("PASS apply refuses /srv/anu")
+
+    def test_ready_handoff_commits_without_git_push(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, target = _project(Path(tmp))
+            handoff = self.result.prepare_mutation(_payload(), project, TIP)
+            out = self.result.apply_ready_handoff(handoff, project, verify=_ok_verify)
+            self.assertEqual(
+                target.read_text(encoding="utf-8"),
+                "def clamp(value, low, high):\n    return max(low, min(value, high))\n",
+            )
+        self.assertEqual(out["status"], "COMMITTED")
+        self.assertTrue(out["eligible_commit"])
+        self.assertTrue(out["transaction_id"])
+        self.assertFalse(out["commit"])
+        self.assertFalse(out["push"])
+        self.assertFalse(out["git_push_ok"])
+        print("PASS apply ready handoff is eligible and does not push")
+
+    def test_failed_verify_rolls_back(self):
+        calls = []
+
+        def verify(*_args, **_kwargs):
+            calls.append(1)
+            ok = len(calls) != 2
+            return {
+                "process_exit_code": 0 if ok else 1,
+                "result": {"ok": ok},
+                "stdout": "",
+                "stderr": "",
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project, target = _project(Path(tmp))
+            handoff = self.result.prepare_mutation(_payload(), project, TIP)
+            out = self.result.apply_ready_handoff(handoff, project, verify=verify)
+            self.assertEqual(target.read_text(encoding="utf-8"), "old\n")
+        self.assertEqual(out["status"], "ROLLED_BACK")
+        self.assertFalse(out["eligible_commit"])
+        self.assertFalse(out["applied"])
+        self.assertFalse(out["git_push_ok"])
+        self.assertNotIn("GIT_PUSH_OK", json.dumps(out))
+        print("PASS apply failed verify rolls back without GIT_PUSH_OK")
 
 
 if __name__ == "__main__":

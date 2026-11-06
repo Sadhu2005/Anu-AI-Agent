@@ -1,0 +1,13 @@
+# ANU Hermes job contract (V1.4).
+# enabled and execute stay false until a model can tool-call inside its real window.
+# This file does not start a service.
+
+enabled: false
+execute: false
+network_access: false
+git_push: false
+production_access: false
+commit: false
+push: false
+jobs_root: /var/lib/anu-hermes/jobs
+user: anu-hermes

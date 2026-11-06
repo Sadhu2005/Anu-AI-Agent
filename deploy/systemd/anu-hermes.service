@@ -1,0 +1,19 @@
+# ANU Hermes worker unit (V1.4). Not installed and not enabled.
+# Copying this file into /etc/systemd/system is a later step.
+# Do not add credential files or token paths.
+
+[Unit]
+Description=ANU Hermes worker (isolated user, execution disabled)
+ConditionPathExists=/srv/anu/config/anu-hermes.yaml
+
+[Service]
+Type=oneshot
+User=anu-hermes
+Group=anu-hermes
+WorkingDirectory=/var/lib/anu-hermes
+ExecStart=/usr/bin/python3 /srv/anu/bin/anu-hermes-worker-v0.1.py --check
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

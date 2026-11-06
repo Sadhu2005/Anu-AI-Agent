@@ -263,6 +263,36 @@ def get_usage(db, name, day=None):
     }
 
 
+def context_char_budget(provider, defaults=None) -> int:
+    """Character cap for one local call: 60–70% of the real context window.
+
+    Code is counted at 3 characters per token so a full module still fits
+    and the completion reserve is not eaten by the prompt. Cloud providers
+    without ``window_tokens`` keep their own ``context_chars``.
+    """
+    defaults = defaults or {}
+    if not isinstance(provider, dict):
+        provider = {}
+    if not provider.get("local") and not provider.get("window_tokens"):
+        return int(provider.get("context_chars") or defaults.get("context_chars") or 24000)
+    window = int(provider.get("window_tokens") or defaults.get("window_tokens") or 32768)
+    ratio = float(provider.get("context_use_ratio") or defaults.get("context_use_ratio") or 0.65)
+    if ratio < 0.60:
+        ratio = 0.60
+    if ratio > 0.70:
+        ratio = 0.70
+    max_tokens = int(provider.get("max_tokens") or defaults.get("max_tokens") or 1024)
+    prompt_tokens = max(256, int(window * ratio) - max_tokens)
+    chars_per_token = int(provider.get("chars_per_token") or defaults.get("chars_per_token") or 3)
+    budget = prompt_tokens * chars_per_token
+    configured = provider.get("context_chars")
+    if configured is None:
+        configured = defaults.get("context_chars")
+    if configured is None:
+        return budget
+    return min(int(configured), budget)
+
+
 def estimate_usd(provider, tokens) -> float:
     """Estimate spend for usage accounting (config-driven; not billing-grade).
 
@@ -499,7 +529,7 @@ def chat(
                 system_prompt=system_prompt,
                 task_id=task_id,
                 privacy_class=privacy_class,
-                context_chars=int(provider.get("context_chars") or context_chars),
+                context_chars=context_char_budget(provider, defaults),
                 for_remote=for_remote,
             )
         else:
@@ -554,6 +584,9 @@ def chat(
             return {
                 "ok": True,
                 "provider": name,
+                "model": (resp.get("model") if isinstance(resp, dict) else None) or provider.get("model"),
+                "base_url": provider.get("base_url") or "router",
+                "zero_cost": bool(provider.get("zero_cost")),
                 "content": content,
                 "json": parsed,
                 "raw": resp,

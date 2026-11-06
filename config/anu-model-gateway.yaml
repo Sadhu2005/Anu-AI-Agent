@@ -6,19 +6,20 @@
 enabled: true
 provider: openai_compatible
 
-# Default: LM Studio local loopback (PC smoke test).
-# On the Pi, set to your PC LAN IP, e.g. this home lab host:
-#   base_url: "http://192.168.1.13:1234/v1"
-base_url: "http://127.0.0.1:1234/v1"
-model: "meta-llama-3.1-8b-instruct"
+# Lab inference: Ollama on Ubuntu anu-server (OpenAI-compatible /v1).
+# Router config is preferred when anu-llm-providers.yaml is enabled.
+# This single-provider block is the fallback if the router is unavailable.
+base_url: "http://192.168.1.13:11434/v1"
+model: "qwen2.5-coder:7b"
 
 # Env var name that holds the bearer token (lm-studio / sk-... / etc.)
 api_key_env: "ANU_MODEL_API_KEY"
 # Optional: if set, read key from this file path (systemd LoadCredential).
 api_key_file_env: "ANU_MODEL_API_KEY_FILE"
 
-timeout_seconds: 120
-max_tokens: 1024
+timeout_seconds: 300
+# Completion reserve inside the 65% window. Prompt budget is the router's.
+max_tokens: 1536
 temperature: 0.2
 
 privacy:
@@ -50,5 +51,5 @@ socket:
 planner:
   mode: llm_optional   # llm_optional | template_only
   fallback_template: multi_stage_goal
-  max_steps: 8
-  timeout_seconds: 60
+  max_steps: 4
+  timeout_seconds: 180

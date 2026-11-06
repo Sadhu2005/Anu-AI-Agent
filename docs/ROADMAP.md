@@ -144,9 +144,16 @@ Evidence: tasks 224–227 and [versions/v0.6.0.md](versions/v0.6.0.md).
 
 ## Immediate Target
 
-V0.8.13 is frozen (tag `v0.8.13`). **V0.9** is in progress on
-`v0.9.0-integration` / `agent/continue-v0.8.13`: junior-dev autonomy,
-multi-LLM failover, and dashboard. See [AUTONOMY.md](AUTONOMY.md) and
+V1.1 baseline hardening is done (`7bf4ba4`). Hermes track is on
+`experiment/hermes-worker`:
+
+- **V1.2** — CLI pinned on the Pi; blank-slate and isolation checks recorded.
+  OpenRouter and LM Studio smokes still wait on operator keys and the LM Studio API.
+- **V1.3** — in progress: rootless Podman policy, `anu-hermes` user, disposable
+  `/var/lib/anu-hermes/jobs/<id>/`. See [versions/v1.3.md](versions/v1.3.md).
+
+Lab autonomy (V0.9 through V1.0) already landed on this branch. See
+[AUTONOMY.md](AUTONOMY.md), [HERMES-INTEGRATION.md](HERMES-INTEGRATION.md), and
 [PI-OPS.md](PI-OPS.md).
 
 ## Model gateway (V0.7.1 frozen)

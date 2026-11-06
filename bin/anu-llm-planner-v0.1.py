@@ -40,7 +40,8 @@ SYSTEM_PROMPT = (
     "Schema: {\"steps\":[{\"role\":\"short_id\",\"description\":\"one line\","
     "\"operation\":\"python_test\"|\"python_compile\"|\"research\"|\"github\"}]}. "
     "Prefer stage roles research, design, implement, test, verify when applicable. "
-    "1-8 steps. Rules: research role may use research; design→python_compile; "
+    "Stay at or under the step cap in the user message. "
+    "Rules: research role may use research; design→python_compile; "
     "implement/test/verify→python_test only; never use github for implement. "
     "github is gather/read only. No shell, paths, or commands."
 )
@@ -51,7 +52,8 @@ RETRY_SYSTEM_PROMPT = (
     "{\"steps\":[{\"role\":\"research\",\"description\":\"survey project\","
     "\"operation\":\"research\"}]}. "
     "Prefer roles research, design, implement, test, verify. "
-    "Use 1-8 real steps. Operations: python_test, python_compile, "
+    "Stay at or under the step cap in the user message. "
+    "Operations: python_test, python_compile, "
     "research, or github."
 )
 
@@ -359,7 +361,7 @@ def validate_steps(raw, *, max_steps=DEFAULT_MAX_STEPS):
     return True, cleaned, "ok"
 
 
-def _build_user_prompt(goal, project_key, project_ctx, memory):
+def _build_user_prompt(goal, project_key, project_ctx, memory, max_steps=DEFAULT_MAX_STEPS):
     goal_desc = ""
     if isinstance(goal, dict):
         goal_desc = str(goal.get("description") or "")
@@ -383,8 +385,10 @@ def _build_user_prompt(goal, project_key, project_ctx, memory):
             or (project_ctx or {}).get("memory_repeated_failure")
         ),
     }
+    cap = int(max_steps) if isinstance(max_steps, int) and max_steps >= 1 else DEFAULT_MAX_STEPS
     return (
         "Propose a linear plan for this ANU goal. "
+        f"Use at most {cap} steps. "
         "Use python_test, python_compile, research, or github. "
         "Prefer stage roles research, design, implement, test, verify "
         "when they fit the goal.\n"
@@ -474,7 +478,9 @@ def propose_steps(
         }
 
     key = project_key or (project_ctx or {}).get("project_key") or "unknown"
-    prompt = _build_user_prompt(goal, key, project_ctx, memory)
+    prompt = _build_user_prompt(
+        goal, key, project_ctx, memory, max_steps=max_steps
+    )
 
     try:
         chat = _chat_once(
@@ -503,8 +509,10 @@ def propose_steps(
         return first
 
     first_reason = str(first.get("reason") or "")
-    retryable = first_reason in _RETRYABLE_REASONS or first_reason.startswith(
-        "step_"
+    retryable = (
+        first_reason in _RETRYABLE_REASONS
+        or first_reason.startswith("step_")
+        or first_reason.startswith("too_many_steps")
     )
     # Do not retry hard validation failures like bad_operation — those are final.
     if first_reason.startswith("step_") and "bad_operation" in first_reason:
@@ -514,7 +522,11 @@ def propose_steps(
 
     try:
         chat2 = _chat_once(
-            prompt + "\n\nReminder: return {\"steps\":[...]} JSON only.",
+            (
+                prompt
+                + f"\n\nReminder: return {{\"steps\":[...]}} JSON only. "
+                + f"Use at most {int(max_steps)} steps."
+            ),
             system=RETRY_SYSTEM_PROMPT,
             timeout_seconds=timeout_seconds,
             tool_choice="none",

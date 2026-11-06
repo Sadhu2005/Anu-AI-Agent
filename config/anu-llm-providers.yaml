@@ -5,10 +5,14 @@
 enabled: true
 
 defaults:
-  timeout_seconds: 120
-  max_tokens: 2048
+  timeout_seconds: 300
+  max_tokens: 1536
   temperature: 0.2
-  context_chars: 24000
+  # Measured on anu-server: qwen2.context_length 32768.
+  # One call may use 65% of that window (inside the 60–70% band).
+  window_tokens: 32768
+  context_use_ratio: 0.65
+  chars_per_token: 3
 
 privacy:
   default_class: INTERNAL
@@ -28,9 +32,29 @@ cooldowns:
   timeout: 15
   connection: 30
 
+# Local-only lab: Ubuntu anu-server Ollama (Qwen2.5-Coder).
+# Cloud entries stay in this file but disabled so a down local server
+# cannot fail over into a paid API. Set enabled: true to opt in.
 providers:
-  - name: lmstudio
+  - name: ollama
     enabled: true
+    base_url: "http://192.168.1.13:11434/v1"
+    model: "qwen2.5-coder:7b"
+    # Unset on purpose. Do not reuse ANU_MODEL_API_KEY; Ollama has no key.
+    api_key_env: "ANU_OLLAMA_API_KEY"
+    local: true
+    zero_cost: true
+    window_tokens: 32768
+    context_use_ratio: 0.65
+    timeout_seconds: 300
+    max_tokens: 1536
+    rpm: 60
+    daily_requests: 10000
+    daily_tokens: 5000000
+    max_usd_per_day: 0
+
+  - name: lmstudio
+    enabled: false
     base_url: "http://192.168.1.13:1234/v1"
     model: "meta-llama-3.1-8b-instruct"
     api_key_env: "ANU_MODEL_API_KEY"
@@ -45,7 +69,7 @@ providers:
     max_usd_per_day: 0
 
   - name: groq
-    enabled: true
+    enabled: false
     base_url: "https://api.groq.com/openai/v1"
     model: "llama-3.3-70b-versatile"
     api_key_env: "ANU_GROQ_API_KEY"
@@ -62,7 +86,7 @@ providers:
     max_usd_per_day: 1.0
 
   - name: gemini
-    enabled: true
+    enabled: false
     # Google OpenAI-compatible endpoint
     base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
     model: "gemini-2.0-flash"
@@ -80,7 +104,7 @@ providers:
     max_usd_per_day: 1.0
 
   - name: openrouter_free
-    enabled: true
+    enabled: false
     base_url: "https://openrouter.ai/api/v1"
     model: "openrouter/free"
     api_key_env: "ANU_OPENROUTER_API_KEY"

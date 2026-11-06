@@ -184,6 +184,19 @@ def privacy_allowed(cfg: dict, privacy_class: str | None) -> bool:
     return klass not in forbidden
 
 
+def describe_router_result(result: dict) -> dict[str, Any]:
+    """Surface the provider that actually answered, including local zero-cost."""
+    raw = result.get("raw") if isinstance(result.get("raw"), dict) else {}
+    provider = result.get("provider") or "llm_router"
+    model = result.get("model") or raw.get("model") or provider
+    return {
+        "provider": provider,
+        "base_url": result.get("base_url") or "router",
+        "model": model,
+        "zero_cost": bool(result.get("zero_cost")),
+    }
+
+
 def _try_llm_router(
     messages: list[dict[str, str]],
     *,
@@ -226,13 +239,14 @@ def _try_llm_router(
             )
         finally:
             db.close()
+        meta = describe_router_result(result)
         return {
             "ok": True,
-            "provider": result.get("provider") or "llm_router",
-            "base_url": "router",
-            "model": "router",
+            "provider": meta["provider"],
+            "base_url": meta["base_url"],
+            "model": meta["model"],
             "privacy_class": privacy_class or "INTERNAL",
-            "zero_cost": False,
+            "zero_cost": meta["zero_cost"],
             "http_status": 200,
             "text": result.get("content") or "",
             "raw": result.get("raw") or result,
@@ -715,6 +729,7 @@ def main(argv=None):
             )
             print(json.dumps({
                 "ok": result["ok"],
+                "provider": result.get("provider"),
                 "model": result["model"],
                 "text": result["text"],
                 "zero_cost": result["zero_cost"],

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Planning |
+| **Status** | V1.1 done · V1.3 `anu-hermes` CLI v0.22.7 on Ollama · V1.4 not started |
 | **Baseline branch** | `v0.9.0-integration` |
 | **Baseline commit** | `deb619f` (21 Oct 2026) |
 | **Host** | Raspberry Pi 5, 8 GB, ARM64, Debian 13 |

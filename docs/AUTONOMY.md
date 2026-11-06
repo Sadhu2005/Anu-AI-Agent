@@ -102,7 +102,7 @@ Always denied (pending human / never auto):
 
 ## LLM failover
 
-Order in `config/anu-llm-providers.yaml`: LM Studio → Groq → Gemini → OpenRouter free.
+Order in `config/anu-llm-providers.yaml`: Ollama `qwen2.5-coder:7b` at `http://192.168.1.13:11434/v1` is the only enabled provider. LM Studio, Groq, Gemini, and OpenRouter stay listed with `enabled: false` so a local outage does not spend cloud money.
 Transport/timeout/rate-limit → failover. **Test failures are not provider outages.**
 
 ## Progress + locks

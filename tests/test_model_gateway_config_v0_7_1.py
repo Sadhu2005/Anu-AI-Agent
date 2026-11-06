@@ -28,7 +28,8 @@ def test_load_repo_config():
     try:
         cfg = m.load_config()
         assert cfg["provider"] == "openai_compatible"
-        assert cfg["model"] == "meta-llama-3.1-8b-instruct"
+        assert cfg["model"] == "qwen2.5-coder:7b"
+        assert "11434" in cfg["base_url"]
         assert "1234" in cfg["base_url"] or cfg["base_url"].endswith("/v1")
         assert cfg["api_key_env"] == "ANU_MODEL_API_KEY"
     finally:
@@ -125,6 +126,23 @@ def test_zero_cost_lan_hosts():
     print("PASS zero-cost detection for LAN vs cloud")
 
 
+def test_router_metadata_keeps_local_model_and_zero_cost():
+    m = load()
+    described = m.describe_router_result({
+        "provider": "ollama",
+        "model": "qwen2.5-coder:7b",
+        "base_url": "http://192.168.1.13:11434/v1",
+        "zero_cost": True,
+        "content": "ANU_OLLAMA_OK",
+        "raw": {"model": "qwen2.5-coder:7b"},
+    })
+    assert described["provider"] == "ollama"
+    assert described["model"] == "qwen2.5-coder:7b"
+    assert described["zero_cost"] is True
+    assert described["base_url"] == "http://192.168.1.13:11434/v1"
+    print("PASS router metadata keeps local model and zero_cost")
+
+
 def test_extract_assistant_text():
     m = load()
     payload = {
@@ -175,6 +193,7 @@ if __name__ == "__main__":
     test_api_key_from_env_and_file()
     test_reject_url_shaped_api_key()
     test_zero_cost_lan_hosts()
+    test_router_metadata_keeps_local_model_and_zero_cost()
     test_extract_assistant_text()
     test_request_chat_mock_provider()
     print("MODEL_GATEWAY_CONFIG_TEST_COMPLETE")

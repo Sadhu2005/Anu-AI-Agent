@@ -123,6 +123,8 @@ class TestLlmRouter(unittest.TestCase):
                 config=self.cfg,
             )
         self.assertEqual(result["provider"], "groq")
+        self.assertEqual(result["model"], "groq-model")
+        self.assertFalse(result["zero_cost"])
         self.assertEqual(calls, ["lmstudio", "groq"])
         # Memory persisted under goal
         ctx = self.router.list_context(self.db, 1)

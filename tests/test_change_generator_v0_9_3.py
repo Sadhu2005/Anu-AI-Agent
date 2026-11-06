@@ -71,6 +71,17 @@ class TestChangeGenerator(unittest.TestCase):
             doc = json.loads(Path(second["path"]).read_text(encoding="utf-8"))
             self.assertTrue(all(e["old"] == e["new"] for e in doc))
 
+    def test_unknown_implement_stays_noop(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.gen.WORKSPACE = Path(td)
+            root = Path(td) / "demo"
+            root.mkdir()
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            out = self.gen.prepare_for_task(
+                "demo", "implement", "Add a clamp helper"
+            )
+            self.assertEqual(out["mode"], "noop")
+
     def test_prepare_inspect_is_noop(self):
         with tempfile.TemporaryDirectory() as td:
             self.gen.WORKSPACE = Path(td)

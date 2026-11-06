@@ -122,6 +122,48 @@ def test_retry_still_fails_falls_through():
     print("PASS retry still fails -> not ok")
 
 
+def test_retry_when_plan_exceeds_step_cap():
+    p = load_planner()
+    prompts = []
+
+    def five_steps():
+        steps = [
+            {
+                "role": role,
+                "description": role,
+                "operation": "python_test",
+            }
+            for role in ("research", "design", "implement", "test", "verify")
+        ]
+        steps[1]["operation"] = "python_compile"
+        return json.dumps({"steps": steps})
+
+    def fake(op, **fields):
+        if op == "health":
+            return {"ok": True}
+        prompts.append(fields.get("prompt") or "")
+        if len(prompts) == 1:
+            return {"ok": True, "text": five_steps()}
+        return {"ok": True, "text": VALID}
+
+    p._gateway_call = fake
+    out = p.propose_steps(
+        {"description": "one ping module"},
+        {},
+        {},
+        project_key="lab-ping-module",
+        max_steps=4,
+    )
+    assert out["ok"] is True
+    assert out["source"] == "llm"
+    assert out["reason"] == "ok_retry"
+    assert len(out["steps"]) == 1
+    assert len(prompts) == 2
+    assert "at most 4" in prompts[0]
+    assert "at most 4" in prompts[1]
+    print("PASS retry when plan exceeds step cap")
+
+
 def test_system_prompt_forbids_tools():
     p = load_planner()
     assert "Do NOT call tools" in p.SYSTEM_PROMPT or "tool" in p.SYSTEM_PROMPT.lower()
@@ -134,5 +176,6 @@ if __name__ == "__main__":
     test_retry_after_tool_echo_yields_llm()
     test_no_retry_on_disallowed_operation()
     test_retry_still_fails_falls_through()
+    test_retry_when_plan_exceeds_step_cap()
     test_system_prompt_forbids_tools()
     print("LLM_PLANNER_RETRY_TEST_COMPLETE")

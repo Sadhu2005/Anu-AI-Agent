@@ -11,9 +11,11 @@ description: >-
 
 # ANU Testing Gate
 
-Apply this skill for **every meaningful code change**. A change is not done
-until local gates pass **and** the Pi verifies the same commit (or a safe
-`/tmp` pack). Fix failures before moving on.
+Apply this skill for **every meaningful code change**, including after each
+code file write. A change is not done until local gates pass **and** the Pi
+verifies the same commit (or a safe `/tmp` pack). Fix failures before moving
+on. Before a commit or push, and when choosing a version branch, also follow
+[anu-version-structure](../anu-version-structure/SKILL.md).
 
 Canonical docs: [docs/TESTING.md](../../../docs/TESTING.md),
 [docs/WORKFLOW.md](../../../docs/WORKFLOW.md),

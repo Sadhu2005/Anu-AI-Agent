@@ -93,9 +93,10 @@ Demo assign: `bash tools/demo-lab-5task.sh` (on Pi after deploy).
 
 ## Model gateway on Pi
 
-`config/anu-model-gateway.yaml` on the Pi points `base_url` at the PC LAN LM Studio
-(e.g. `http://192.168.1.13:1234/v1`). That local edit must be backed up before
-resets (`/tmp/anu-model-gateway.yaml.bak.*`).
+`config/anu-model-gateway.yaml` and `config/anu-llm-providers.yaml` point the
+lab at Ollama on Ubuntu anu-server: `http://192.168.1.13:11434/v1`, model
+`qwen2.5-coder:7b`, no API key. Back up those files before resets
+(`/tmp/anu-model-gateway.yaml.bak.*`).
 
 Multi-provider failover is configured in `config/anu-llm-providers.yaml`
 (keys via env / credential files, never in git).

@@ -18,7 +18,8 @@ Treat a file by **intent** of the change; still run the matching regression pack
 ## Portable vs Pi-only
 
 - **Portable (CI / workspace):** packs listed in `.github/workflows/ci.yml`
-  (`run_v0_6_2` … `run_v0_9_lab`). Prefer these first.
+  (`run_v0_6_2` … `run_v0_9_lab`, plus the Unit, Integration, Functional,
+  and Regression jobs). Prefer these first.
 - **Pi-only:** tests hard-coding `/srv/anu`, live brain, or sandbox-test-project.
   See [docs/TESTING.md](../../../docs/TESTING.md) isolation section.
 

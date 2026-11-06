@@ -233,6 +233,62 @@ jobs:
             echo "skip: no V0.9 lab pack on this branch"
           fi
 
+  unit:
+    name: Unit
+    runs-on: ubuntu-latest
+    needs: py-compile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install host deps (PyYAML)
+        run: pip install -r requirements.txt
+      - name: V1.4 unit
+        run: python tests/test_hermes_adapter_v1_4.py
+
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install host deps (PyYAML)
+        run: pip install -r requirements.txt
+      - name: V1.4 integration
+        run: python tests/test_hermes_job_integration_v1_4.py
+
+  functional:
+    name: Functional
+    runs-on: ubuntu-latest
+    needs: integration
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install host deps (PyYAML)
+        run: pip install -r requirements.txt
+      - name: V1.4 functional
+        run: python tests/test_hermes_job_functional_v1_4.py
+
+  regression:
+    name: Regression
+    runs-on: ubuntu-latest
+    needs: functional
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install host deps (PyYAML)
+        run: pip install -r requirements.txt
+      - name: V1.4 regression pack
+        run: python tests/run_v1_4_regression.py
+
   config-yaml:
     runs-on: ubuntu-latest
     steps:

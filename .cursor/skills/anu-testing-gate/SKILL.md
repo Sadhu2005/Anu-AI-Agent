@@ -77,7 +77,7 @@ python tests/run_v0_9_lab_regression.py
 ```
 
 Also run the **closest** version pack for the change (e.g. `tests/run_v0_8_13_regression.py`).
-CI mirror: `.github/workflows/ci.yml` (`py_compile` + portable packs).
+CI mirror: `.github/workflows/ci.yml` (`py_compile`, then Unit → Integration → Functional → Regression, plus portable packs).
 
 Optional matrix detect:
 

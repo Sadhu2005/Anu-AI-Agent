@@ -274,6 +274,8 @@ jobs:
         run: pip install -r requirements.txt
       - name: V1.4 functional
         run: python tests/test_hermes_job_functional_v1_4.py
+      - name: V1.5 handoff
+        run: python tests/test_hermes_verification_v1_5.py
 
   regression:
     name: Regression
@@ -286,8 +288,8 @@ jobs:
           python-version: "3.13"
       - name: Install host deps (PyYAML)
         run: pip install -r requirements.txt
-      - name: V1.4 regression pack
-        run: python tests/run_v1_4_regression.py
+      - name: V1.5 regression pack
+        run: python tests/run_v1_5_regression.py
 
   config-yaml:
     runs-on: ubuntu-latest

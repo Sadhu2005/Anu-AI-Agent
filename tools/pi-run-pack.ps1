@@ -19,6 +19,6 @@ $localScript = Join-Path $env:TEMP "anu-pack-$stamp.sh"
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($localScript, $script, $utf8NoBom)
 ssh $HostName "mkdir -p $remoteDir"
-scp -r bin tests migrations config "${HostName}:${remoteDir}/"
+scp -r bin tests migrations config deploy docs "${HostName}:${remoteDir}/"
 scp $localScript "${HostName}:/tmp/anu-pack-run-$stamp.sh"
 ssh $HostName "sed -i 's/\r$//' /tmp/anu-pack-run-$stamp.sh; bash /tmp/anu-pack-run-$stamp.sh"

@@ -28,12 +28,13 @@ anu-agent.service
 
 | | |
 |---|---|
-| **Version** | **V0.9.x lab-repo autonomy** on branch **`v0.9.0-integration`** |
-| **Proven** | V0.5.9–V0.9.9 Pi autonomous todo goals; V0.9.10 dashboard |
-| **Lab target** | [anu-agent-test](https://github.com/Sadhu2005/anu-agent-test) — ANU commits/pushes here |
-| **Next** | Unattended 5-task lab E2E on Pi · gated PR · V1.0 freeze |
+| **Version** | **V1.5 verification handoff** on branch **`v1.5-integration`** |
+| **Proven** | V0.5.9–V0.9 lab-repo autonomy on Pi; V1.1 baseline; V1.2–V1.4 Hermes worker/adapter; V1.5 ready-handoff → Safe Mutation (in progress) |
+| **Lab target** | [anu-agent-test](https://github.com/Sadhu2005/anu-agent-test) — ANU commits/pushes `agent/*` here |
+| **Hermes** | Coding worker only; ANU remains control plane ([docs/HERMES-INTEGRATION.md](docs/HERMES-INTEGRATION.md)) |
+| **Next** | V1.5 matrix + repair evidence · then [V1.6](docs/versions/v1.6.md) release integration (gated PR / dashboard) |
 
-Operator how-to: [docs/AUTONOMY.md](docs/AUTONOMY.md) · Lab model: [docs/LAB-REPO.md](docs/LAB-REPO.md).  
+Operator how-to: [docs/AUTONOMY.md](docs/AUTONOMY.md) · Lab model: [docs/LAB-REPO.md](docs/LAB-REPO.md) · This version: [docs/versions/v1.5.md](docs/versions/v1.5.md).  
 See [docs/ROADMAP.md](docs/ROADMAP.md) for history. **No TypeScript agent rewrite** — extend this Python/Pi stack.
 
 ## Safety Model in One Screen
@@ -86,7 +87,9 @@ never committed.
 | [docs/WHY.md](docs/WHY.md) | Why ANU is built safety-first |
 | [docs/DESIGN-PHILOSOPHY.md](docs/DESIGN-PHILOSOPHY.md) | Time-rich, compute-constrained |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the execution chain works |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | V0.5.9 → V0.7.0 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | V0.5.9 → V1.6 (incl. Hermes track) |
+| [docs/HERMES-INTEGRATION.md](docs/HERMES-INTEGRATION.md) | ANU × Hermes strategy |
+| [docs/versions/v1.5.md](docs/versions/v1.5.md) | Current version plan + evidence |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | What changed in each version |
 | [docs/README.md](docs/README.md) | Full documentation index |
 
